@@ -1,0 +1,40 @@
+# Google OAuth 凭据（绝对不能上传到 git！）
+credentials.json
+token.json
+
+# 用户自定义白名单（本地配置）
+user_whitelist.json
+
+# Python 虚拟环境
+venv/
+.venv/
+env/
+
+# Python 字节码缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 日志文件（可能含有邮件内容，不适合提交）
+logs/*.log
+
+# macOS 系统文件
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE 配置
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 测试覆盖率报告
+.coverage
+htmlcov/
+
+# 打包产物
+dist/
+build/
+*.egg-info/

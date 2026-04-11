@@ -1,0 +1,11 @@
+# Gmail API 认证相关
+google-auth>=2.27.0
+google-auth-oauthlib>=1.2.0
+google-api-python-client>=2.118.0
+
+# HTML 解析（从邮件正文提取退订链接）
+beautifulsoup4>=4.12.0
+lxml>=5.1.0
+
+# HTTP 请求（访问退订链接）
+requests>=2.31.0
