@@ -166,7 +166,7 @@ def add_to_user_whitelist(domain: str) -> bool:
 USE_AI_CLASSIFIER = True
 
 # Anthropic API Key（也可通过环境变量 ANTHROPIC_API_KEY 设置）
-ANTHROPIC_API_KEY = ""
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # 使用的 Claude 模型（haiku 最快最便宜）
 AI_MODEL = "claude-haiku-4-5-20251001"
