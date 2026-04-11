@@ -106,11 +106,9 @@ SENSITIVE_KEYWORDS = [
 
 SUSPICIOUS_SENDER_KEYWORDS = [
     "noreply", "no-reply", "donotreply", "do-not-reply",
-    "newsletter", "news", "promo", "promotion", "marketing",
+    "newsletter", "promo", "promotion", "marketing",
     "offers", "deals", "sales", "shop", "store",
-    "info", "hello", "hi", "contact", "team",
-    "notification", "alert", "updates", "digest",
-    "广告", "推广", "营销", "促销", "优惠", "通知",
+    "广告", "推广", "营销", "促销", "优惠",
 ]
 
 # ────────────────────────────────────────────────────────────────
@@ -158,3 +156,27 @@ def add_to_user_whitelist(domain: str) -> bool:
     current.append(domain)
     save_user_whitelist(current)
     return True
+
+
+# ────────────────────────────────────────────────────────────────
+#  AI 分类配置
+# ────────────────────────────────────────────────────────────────
+
+# 是否启用 Claude AI 辅助分类（关键词命中 1 条时触发）
+USE_AI_CLASSIFIER = True
+
+# Anthropic API Key（也可通过环境变量 ANTHROPIC_API_KEY 设置）
+ANTHROPIC_API_KEY = ""
+
+# 使用的 Claude 模型（haiku 最快最便宜）
+AI_MODEL = "claude-haiku-4-5-20251001"
+
+# AI 回复的最大 token 数（只需简短 JSON）
+AI_MAX_TOKENS = 150
+
+# ────────────────────────────────────────────────────────────────
+#  数据库配置
+# ────────────────────────────────────────────────────────────────
+
+# SQLite 数据库文件路径
+DB_PATH = os.path.join(os.path.dirname(__file__), "gmail-unsubscriber.db")
