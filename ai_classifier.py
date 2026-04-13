@@ -21,10 +21,18 @@ def _get_anthropic_client():
     return anthropic.Anthropic(api_key=api_key)
 
 
-def _get_openai_client():
-    from openai import OpenAI
+def _get_minimax_client():
+    import anthropic
     api_key = config.MINIMAX_API_KEY or os.environ.get("MINIMAX_API_KEY", "")
-    return OpenAI(api_key=api_key, base_url=config.MINIMAX_BASE_URL)
+    return anthropic.Anthropic(api_key=api_key, base_url=config.MINIMAX_BASE_URL)
+
+
+def _extract_text_from_response(message) -> str:
+    """从 AI 响应中提取文本，跳过推理模型的 thinking block。"""
+    for block in message.content:
+        if block.type == "text":
+            return block.text.strip()
+    return message.content[-1].text.strip() if message.content else ""
 
 
 def _call_anthropic(prompt: str) -> str:
@@ -34,17 +42,17 @@ def _call_anthropic(prompt: str) -> str:
         max_tokens=config.AI_MAX_TOKENS,
         messages=[{"role": "user", "content": prompt}],
     )
-    return message.content[0].text.strip()
+    return _extract_text_from_response(message)
 
 
 def _call_minimax(prompt: str) -> str:
-    client = _get_openai_client()
-    response = client.chat.completions.create(
+    client = _get_minimax_client()
+    message = client.messages.create(
         model=config.MINIMAX_MODEL,
         max_tokens=config.AI_MAX_TOKENS,
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.choices[0].message.content.strip()
+    return _extract_text_from_response(message)
 
 
 def _call_ai(prompt: str) -> str:

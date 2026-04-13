@@ -183,8 +183,8 @@ AI_MAX_TOKENS = 150
 # ────────────────────────────────────────────────────────────────
 
 MINIMAX_API_KEY = os.environ.get("MINIMAX_API_KEY", "")
-MINIMAX_MODEL = "MiniMax-Text-01"
-MINIMAX_BASE_URL = "https://api.minimax.chat/v1"
+MINIMAX_MODEL = "MiniMax-M2.7"
+MINIMAX_BASE_URL = "https://api.minimaxi.com/anthropic"
 
 # AI 提供商选择："minimax" 或 "anthropic"
 AI_PROVIDER = os.environ.get("AI_PROVIDER", "minimax")
