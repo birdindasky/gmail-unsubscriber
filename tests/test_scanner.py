@@ -41,10 +41,14 @@ def test_filter_already_unsubscribed(monkeypatch, tmp_path):
     msg1 = _make_msg("id1", "spam@old.com", "广告")
     msg2 = _make_msg("id2", "legit@work.com", "Meeting")
 
+    # _fetch_messages_batch 返回已解析的邮件，所以需要先解析
+    parsed1 = scanner._parse_message(msg1)
+    parsed2 = scanner._parse_message(msg2)
+
     mock_service = MagicMock()
 
     with patch.object(scanner, "_list_all_messages", return_value=[{"id": "id1"}, {"id": "id2"}]), \
-         patch.object(scanner, "_fetch_messages_batch", return_value=[msg1, msg2]):
+         patch.object(scanner, "_fetch_messages_batch", return_value=[parsed1, parsed2]):
         results = scanner.scan_emails(mock_service, days=30)
 
     sender_emails = [r["sender_email"] for r in results]

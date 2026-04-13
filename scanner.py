@@ -64,17 +64,7 @@ def scan_emails(service, days: int = 30, scan_all: bool = False) -> list[dict]:
     if total == 0:
         return []
 
-    raw_msgs = _fetch_messages_batch(service, message_stubs)
-
-    # 解析原始邮件对象（若已是解析后的结构则直接使用）
-    emails = []
-    for raw in raw_msgs:
-        if "sender_email" in raw:
-            emails.append(raw)
-        else:
-            parsed = _parse_message(raw)
-            if parsed:
-                emails.append(parsed)
+    emails = _fetch_messages_batch(service, message_stubs)
 
     # 过滤已退订的发件人
     already_done = set()
