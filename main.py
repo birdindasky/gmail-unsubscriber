@@ -29,6 +29,7 @@ from datetime import datetime
 import auth
 import classifier
 import config
+import database
 import scanner
 import unsubscriber
 
@@ -83,15 +84,24 @@ def cmd_scan(args: argparse.Namespace) -> None:
     print("=" * 60)
 
     service = auth.get_gmail_service()
-    emails = scanner.scan_emails(service, days=args.days)
+    use_ai = not args.no_ai
+    emails = scanner.scan_emails(service, days=args.days, scan_all=args.all)
 
     if not emails:
         print("📭 最近邮件为空或扫描结果为零。")
         return
 
-    result = classifier.classify_emails(emails)
+    result = classifier.classify_emails(emails, use_ai=use_ai)
     to_unsub = result["to_unsubscribe"]
     skipped = result["skipped"]
+
+    # 记录本次扫描
+    database.record_scan(
+        days=args.days,
+        total_emails=len(emails),
+        candidates=len(to_unsub),
+        unsubscribed=0,
+    )
 
     print(f"\n📊 扫描报告")
     print(f"   总邮件数：{len(emails)}")
@@ -113,9 +123,8 @@ def cmd_scan(args: argparse.Namespace) -> None:
         print(f"      邮件数量：{group['count']} 封")
         print(f"      判定依据：{group['reasons'][0] if group['reasons'] else '无'}")
         if group.get("sample_subjects"):
-            subjects = group["sample_subjects"][:3]
             print(f"      邮件主题示例：")
-            for s in subjects:
+            for s in group["sample_subjects"][:3]:
                 print(f"        · {s[:60]}{'...' if len(s) > 60 else ''}")
         has_unsub = "✓" if group.get("list_unsubscribe") else "✗"
         print(f"      支持 List-Unsubscribe：{has_unsub}")
@@ -138,6 +147,8 @@ def cmd_unsubscribe(args: argparse.Namespace) -> None:
     dry_run = args.dry_run
     confirm_mode = args.confirm
     auto_mode = args.auto
+    archive = getattr(args, "archive", False)
+    use_ai = not getattr(args, "no_ai", False)
 
     if dry_run:
         print("=" * 60)
@@ -146,24 +157,22 @@ def cmd_unsubscribe(args: argparse.Namespace) -> None:
     elif confirm_mode:
         mode_desc = "自动确认" if auto_mode else "逐个确认"
         print("=" * 60)
-        print(f"  Gmail 退订工具 - {mode_desc}模式")
+        print(f"  Gmail 退订工具 - {mode_desc}模式{'（退订后归档）' if archive else ''}")
         print("=" * 60)
-
         if not auto_mode:
             print("\n⚠️  注意：即将对以下发件人执行退订操作。")
-            print("   退订后，对方将停止向您发送邮件。")
-            print("   系统不会删除您的邮件，如需恢复需手动重新订阅。\n")
+            print("   退订后，对方将停止向您发送邮件。\n")
 
-    # 扫描邮件
     days = getattr(args, "days", 30)
+    scan_all = getattr(args, "all", False)
     service = auth.get_gmail_service()
-    emails = scanner.scan_emails(service, days=days)
+    emails = scanner.scan_emails(service, days=days, scan_all=scan_all)
 
     if not emails:
         print("📭 未找到邮件。")
         return
 
-    result = classifier.classify_emails(emails)
+    result = classifier.classify_emails(emails, use_ai=use_ai)
     to_unsub = result["to_unsubscribe"]
 
     if not to_unsub:
@@ -172,11 +181,9 @@ def cmd_unsubscribe(args: argparse.Namespace) -> None:
 
     print(f"\n📋 找到 {len(to_unsub)} 个建议退订的发件人\n")
 
-    # 统计
     success_count = 0
     skip_count = 0
     fail_count = 0
-    results_log = []
 
     for i, group in enumerate(to_unsub, 1):
         sender_email = group["sender_email"]
@@ -188,7 +195,6 @@ def cmd_unsubscribe(args: argparse.Namespace) -> None:
         if group.get("reasons"):
             print(f"         原因：{group['reasons'][0]}")
 
-        # 确认模式：逐个询问用户
         if confirm_mode and not auto_mode:
             user_skipped = False
             while True:
@@ -198,7 +204,6 @@ def cmd_unsubscribe(args: argparse.Namespace) -> None:
                 elif answer in ("n", "no", "否"):
                     print(f"         ⏭️  跳过 {sender_email}")
                     skip_count += 1
-                    results_log.append({"sender": sender_email, "status": "skipped", "message": "用户跳过"})
                     print()
                     user_skipped = True
                     break
@@ -211,8 +216,9 @@ def cmd_unsubscribe(args: argparse.Namespace) -> None:
             if user_skipped:
                 continue
 
-        # 执行退订
-        exec_result = unsubscriber.execute_unsubscribe(group, dry_run=dry_run)
+        exec_result = unsubscriber.execute_unsubscribe(
+            group, service=service, dry_run=dry_run, archive=archive
+        )
 
         if dry_run:
             methods = exec_result.get("details", {}).get("available_methods", [])
@@ -222,39 +228,37 @@ def cmd_unsubscribe(args: argparse.Namespace) -> None:
                     print(f"              {m}")
             else:
                 print(f"         ⚠️  [试运行] 未发现退订方式")
-
-            results_log.append({
-                "sender": sender_email,
-                "status": "dry_run",
-                "message": exec_result.get("message", ""),
-            })
         elif exec_result["success"]:
             print(f"         ✅ 退订成功：{exec_result['message']}")
             success_count += 1
-            results_log.append({
-                "sender": sender_email,
-                "status": "success",
-                "method": exec_result.get("attempted_method"),
-                "message": exec_result.get("message", ""),
-            })
+            database.record_unsubscribe(
+                sender_email=sender_email,
+                sender_name=sender_display,
+                method=exec_result.get("attempted_method", "unknown"),
+                success=True,
+            )
         else:
             print(f"         ❌ 退订失败：{exec_result['message']}")
             fail_count += 1
-            results_log.append({
-                "sender": sender_email,
-                "status": "failed",
-                "message": exec_result.get("message", ""),
-            })
+            database.record_unsubscribe(
+                sender_email=sender_email,
+                sender_name=sender_display,
+                method="failed",
+                success=False,
+            )
 
         print()
 
-    # 输出汇总
     if not dry_run:
         _print_summary(success_count, skip_count, fail_count)
+        database.record_scan(
+            days=days,
+            total_emails=len(emails),
+            candidates=len(to_unsub),
+            unsubscribed=success_count,
+        )
 
-    logger.info(
-        f"退订任务完成：成功={success_count}，跳过={skip_count}，失败={fail_count}"
-    )
+    logger.info(f"退订任务完成：成功={success_count}，跳过={skip_count}，失败={fail_count}")
 
 
 def _print_summary(success: int, skipped: int, failed: int) -> None:
@@ -274,6 +278,44 @@ def _print_summary(success: int, skipped: int, failed: int) -> None:
 
 
 # ────────────────────────────────────────────────────────────────
+#  命令：history
+# ────────────────────────────────────────────────────────────────
+
+def cmd_history(args: argparse.Namespace) -> None:
+    """查看历史退订记录。"""
+    limit = getattr(args, "limit", 50)
+    history = database.get_history(limit=limit)
+
+    if not history:
+        print("📭 暂无退订历史记录。")
+        print("   运行 'python main.py unsubscribe --confirm' 开始退订。")
+        return
+
+    print(f"\n📋 退订历史记录（共 {len(history)} 条，最近 {limit} 条）")
+    print("─" * 60)
+
+    method_labels = {
+        "one_click_post": "一键退订（POST）",
+        "http_get": "HTTP 链接退订",
+        "mailto": "退订邮件发送",
+        "link_click": "正文链接退订",
+        "failed": "退订失败",
+        "unknown": "未知方式",
+    }
+
+    for i, record in enumerate(history, 1):
+        status = "✅" if record["success"] else "❌"
+        method = method_labels.get(record.get("method", ""), record.get("method", ""))
+        ts = record["unsubscribed_at"][:16].replace("T", " ")
+        print(f"\n  [{i}] {record.get('sender_name', record['sender_email'])}")
+        print(f"      邮箱：{record['sender_email']}")
+        print(f"      时间：{ts}  方式：{method}  {status}")
+
+    print()
+    print("─" * 60)
+
+
+# ────────────────────────────────────────────────────────────────
 #  命令：whitelist
 # ────────────────────────────────────────────────────────────────
 
@@ -281,16 +323,19 @@ def cmd_whitelist(args: argparse.Namespace) -> None:
     """管理用户自定义白名单。"""
     if args.whitelist_action == "add":
         domain = args.domain.lower().strip()
-        success = config.add_to_user_whitelist(domain)
+        if domain in config.WHITELIST_DOMAINS:
+            print(f"ℹ️  '{domain}' 已在内置白名单中，无需重复添加。")
+            return
+        success = database.add_to_user_whitelist(domain)
         if success:
             print(f"✅ 已将 '{domain}' 加入白名单")
             print(f"   来自此域名的邮件将不会被退订。")
             logger.info(f"白名单新增：{domain}")
         else:
-            print(f"ℹ️  '{domain}' 已在白名单中（内置或用户自定义），无需重复添加。")
+            print(f"ℹ️  '{domain}' 已在用户白名单中，无需重复添加。")
 
     elif args.whitelist_action == "list":
-        user_domains = config.load_user_whitelist()
+        user_domains = database.get_user_whitelist()
         builtin_count = len(config.WHITELIST_DOMAINS)
 
         print(f"\n📋 白名单概览")
@@ -371,78 +416,70 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例：
-  %(prog)s scan                         扫描最近 30 天邮件
-  %(prog)s scan --days 60               扫描最近 60 天邮件
-  %(prog)s unsubscribe --dry-run        预览将要退订的发件人（不实际执行）
-  %(prog)s unsubscribe --confirm        逐个确认后执行退订
-  %(prog)s unsubscribe --confirm --auto 自动退订所有建议的发件人
-  %(prog)s whitelist add taobao.com     将 taobao.com 加入白名单
-  %(prog)s whitelist list               查看白名单
-  %(prog)s logs                         查看运行日志
+  %(prog)s scan                              扫描最近 30 天促销邮件
+  %(prog)s scan --days 60 --all             扫描最近 60 天全部邮件
+  %(prog)s scan --no-ai                     不使用 AI 辅助判断
+  %(prog)s unsubscribe --dry-run            预览将要退订的发件人
+  %(prog)s unsubscribe --confirm            逐个确认执行退订
+  %(prog)s unsubscribe --confirm --auto     自动退订所有建议发件人
+  %(prog)s unsubscribe --confirm --archive  退订并归档旧邮件
+  %(prog)s history                          查看退订历史
+  %(prog)s whitelist add taobao.com         加入白名单
+  %(prog)s whitelist list                   查看白名单
+  %(prog)s logs                             查看运行日志
         """,
     )
 
-    parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="显示详细调试日志",
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="显示详细调试日志")
 
     subparsers = parser.add_subparsers(dest="command", metavar="命令")
     subparsers.required = True
 
-    # ── scan 子命令 ──
+    # ── scan ──
     scan_parser = subparsers.add_parser("scan", help="扫描邮件，分析广告发件人")
-    scan_parser.add_argument(
-        "--days", "-d",
-        type=int,
-        default=30,
-        metavar="N",
-        help="扫描最近 N 天的邮件（默认：30）",
-    )
+    scan_parser.add_argument("--days", "-d", type=int, default=30, metavar="N",
+                             help="扫描最近 N 天的邮件（默认：30）")
+    scan_parser.add_argument("--all", action="store_true",
+                             help="扫描全部邮件（默认只扫促销标签）")
+    scan_parser.add_argument("--no-ai", action="store_true", dest="no_ai",
+                             help="不使用 Claude AI 辅助判断")
     scan_parser.set_defaults(func=cmd_scan)
 
-    # ── unsubscribe 子命令 ──
+    # ── unsubscribe ──
     unsub_parser = subparsers.add_parser("unsubscribe", help="执行退订操作")
-    unsub_parser.add_argument(
-        "--days", "-d",
-        type=int,
-        default=30,
-        metavar="N",
-        help="扫描最近 N 天的邮件（默认：30）",
-    )
+    unsub_parser.add_argument("--days", "-d", type=int, default=30, metavar="N",
+                              help="扫描最近 N 天的邮件（默认：30）")
+    unsub_parser.add_argument("--all", action="store_true",
+                              help="扫描全部邮件（默认只扫促销标签）")
+    unsub_parser.add_argument("--no-ai", action="store_true", dest="no_ai",
+                              help="不使用 Claude AI 辅助判断")
+    unsub_parser.add_argument("--archive", action="store_true",
+                              help="退订成功后归档该发件人的旧邮件")
     unsub_mode = unsub_parser.add_mutually_exclusive_group(required=True)
-    unsub_mode.add_argument(
-        "--dry-run",
-        action="store_true",
-        dest="dry_run",
-        help="试运行：展示将要退订的发件人，不实际执行",
-    )
-    unsub_mode.add_argument(
-        "--confirm",
-        action="store_true",
-        dest="confirm",
-        help="确认模式：逐个询问用户（配合 --auto 可自动全部确认）",
-    )
-    unsub_parser.add_argument(
-        "--auto",
-        action="store_true",
-        help="自动确认所有退订（需配合 --confirm 使用）",
-    )
+    unsub_mode.add_argument("--dry-run", action="store_true", dest="dry_run",
+                            help="试运行：展示将要退订的发件人，不实际执行")
+    unsub_mode.add_argument("--confirm", action="store_true", dest="confirm",
+                            help="确认模式：逐个询问用户")
+    unsub_parser.add_argument("--auto", action="store_true",
+                              help="自动确认所有退订（需配合 --confirm）")
     unsub_parser.set_defaults(func=cmd_unsubscribe)
 
-    # ── whitelist 子命令 ──
+    # ── history ──
+    history_parser = subparsers.add_parser("history", help="查看退订历史记录")
+    history_parser.add_argument("--limit", type=int, default=50, metavar="N",
+                                help="显示最近 N 条记录（默认：50）")
+    history_parser.set_defaults(func=cmd_history)
+
+    # ── whitelist ──
     wl_parser = subparsers.add_parser("whitelist", help="管理白名单域名")
     wl_sub = wl_parser.add_subparsers(dest="whitelist_action", metavar="操作")
     wl_sub.required = True
-
     wl_add = wl_sub.add_parser("add", help="添加域名到白名单")
     wl_add.add_argument("domain", help="要加入白名单的域名，如 example.com")
-
     wl_sub.add_parser("list", help="查看当前白名单")
     wl_parser.set_defaults(func=cmd_whitelist)
 
-    # ── logs 子命令 ──
+    # ── logs ──
     logs_parser = subparsers.add_parser("logs", help="查看运行日志")
     logs_parser.set_defaults(func=cmd_logs)
 
@@ -458,6 +495,7 @@ def main() -> None:
     args = parser.parse_args()
 
     setup_logging(verbose=args.verbose)
+    database.init_db()
     logger.info(f"启动命令：{' '.join(sys.argv)}")
 
     try:
