@@ -225,3 +225,45 @@ def classify_emails(emails: list[dict], use_ai: bool = True) -> dict:
 
     skipped = len(emails) - sum(g["count"] for g in result)
     return {"to_unsubscribe": result, "skipped": skipped}
+
+
+# ────────────────────────────────────────────────────────────────
+#  按类别归组
+# ────────────────────────────────────────────────────────────────
+
+def categorize_groups(groups: list[dict], use_ai: bool = True) -> dict[str, list[dict]]:
+    """
+    将发件人分组按邮件类别归组。
+
+    Args:
+        groups:  classify_emails() 返回的 to_unsubscribe 列表
+        use_ai:  是否使用 AI 判断未知域名的类别
+
+    Returns:
+        dict: {类别名: [发件人分组列表]}，只包含非空类别
+    """
+    categorized: dict[str, list[dict]] = {}
+
+    for group in groups:
+        domain = group.get("sender_domain", "")
+        category = config.DOMAIN_TO_CATEGORY.get(domain)
+
+        if not category:
+            for mapped_domain, mapped_cat in config.DOMAIN_TO_CATEGORY.items():
+                if domain.endswith("." + mapped_domain):
+                    category = mapped_cat
+                    break
+
+        if not category and use_ai:
+            sender = group.get("sender", "")
+            subject = group["sample_subjects"][0] if group.get("sample_subjects") else ""
+            category = ai_classifier.categorize_with_ai(sender, subject)
+
+        if not category:
+            category = "其他"
+
+        if category not in categorized:
+            categorized[category] = []
+        categorized[category].append(group)
+
+    return categorized
