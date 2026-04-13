@@ -69,26 +69,16 @@ def test_parse_sender_bare_email():
 
 
 def test_fetch_messages_batch_returns_list():
-    """_fetch_messages_batch 应返回解析后的邮件列表。"""
+    """_fetch_messages_batch 应返回解析后的邮件列表（逐封请求模式）。"""
     msg = _make_msg("abc", "test@example.com")
     mock_service = MagicMock()
 
-    captured_callback = {}
+    # 模拟 service.users().messages().get(...).execute() 返回邮件
+    mock_service.users.return_value.messages.return_value.get.return_value.execute.return_value = msg
 
-    def fake_batch_factory(callback):
-        captured_callback["fn"] = callback
-        batch = MagicMock()
+    with patch("scanner.time") as mock_time:
+        mock_time.sleep = MagicMock()
+        results = scanner._fetch_messages_batch(mock_service, [{"id": "abc"}])
 
-        def fake_execute():
-            captured_callback["fn"]("0", msg, None)
-
-        batch.execute = fake_execute
-        batch.add = MagicMock()
-        batch._requests = {"0": True}
-        return batch
-
-    mock_service.new_batch_http_request.side_effect = fake_batch_factory
-
-    results = scanner._fetch_messages_batch(mock_service, [{"id": "abc"}])
     assert len(results) == 1
     assert results[0]["sender_email"] == "test@example.com"

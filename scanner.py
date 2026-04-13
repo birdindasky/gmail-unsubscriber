@@ -15,10 +15,10 @@ import database
 
 logger = logging.getLogger(__name__)
 
-MAX_BATCH_SIZE = 50   # metadata 请求极轻量，50 并发安全
 MAX_RETRIES = 3
 RETRY_DELAY = 2
-BATCH_SLEEP = 0.3     # 每批之间休眠秒数
+REQUEST_SLEEP = 0.12  # 每封请求之间休眠（约 8 req/s，不触发并发限制）
+PROGRESS_INTERVAL = 20  # 每处理多少封打印一次进度
 
 
 def _retry_request(func, *args, **kwargs):
@@ -89,43 +89,47 @@ def scan_emails(service, days: int = 30, scan_all: bool = False) -> list[dict]:
 
 def _fetch_messages_batch(service, message_stubs: list[dict]) -> list[dict]:
     """
-    使用 Gmail 批量 API 获取邮件详情，返回原始 Gmail API 响应列表。
-    每批最多 100 封，比逐封请求快约 10 倍。
+    逐封获取邮件 metadata，遇到 429 自动退避重试。
+    放弃批量 API 是因为 Gmail 对同一用户有并发连接上限，
+    批量请求在服务器端并行执行，很容易触发 429 并丢失数据。
     """
     results = []
+    total = len(message_stubs)
 
-    def callback(request_id, response, exception):
-        if exception is not None:
-            logger.warning(f"批量请求失败（request_id={request_id}）：{exception}")
-            return
-        try:
-            parsed = _parse_message(response)
-            if parsed:
-                results.append(parsed)
-        except Exception as e:
-            logger.warning(f"邮件解析失败：{e}")
+    for i, stub in enumerate(message_stubs):
+        if i > 0 and i % PROGRESS_INTERVAL == 0:
+            print(f"   进度：{i}/{total} 封...")
 
-    for batch_start in range(0, len(message_stubs), MAX_BATCH_SIZE):
-        batch_stubs = message_stubs[batch_start:batch_start + MAX_BATCH_SIZE]
-        batch = service.new_batch_http_request(callback=callback)
-
-        for stub in batch_stubs:
-            batch.add(
-                service.users().messages().get(
+        for attempt in range(MAX_RETRIES):
+            try:
+                msg = service.users().messages().get(
                     userId="me",
                     id=stub["id"],
                     format="metadata",
                     metadataHeaders=["From", "Subject", "List-Unsubscribe",
                                      "List-Unsubscribe-Post", "Date"],
-                )
-            )
+                ).execute()
+                parsed = _parse_message(msg)
+                if parsed:
+                    results.append(parsed)
+                break
+            except HttpError as e:
+                if e.resp.status == 429:
+                    wait = RETRY_DELAY * (attempt + 1)
+                    logger.debug(f"429 速率限制，{wait}s 后重试（第 {attempt+1} 次）...")
+                    time.sleep(wait)
+                elif e.resp.status in (500, 503):
+                    wait = RETRY_DELAY * (attempt + 1)
+                    logger.warning(f"服务器错误 {e.resp.status}，{wait}s 后重试...")
+                    time.sleep(wait)
+                else:
+                    logger.warning(f"获取邮件失败（{stub['id']}）：{e}")
+                    break
+            except Exception as e:
+                logger.warning(f"邮件解析失败（{stub['id']}）：{e}")
+                break
 
-        try:
-            batch.execute()
-        except Exception as e:
-            logger.error(f"批量请求执行失败：{e}")
-
-        time.sleep(BATCH_SLEEP)
+        time.sleep(REQUEST_SLEEP)
 
     return results
 
