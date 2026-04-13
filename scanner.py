@@ -44,18 +44,25 @@ def scan_emails(service, days: int = 30, scan_all: bool = False) -> list[dict]:
     默认优先扫描 CATEGORY_PROMOTIONS 标签；scan_all=True 时扫描全部邮件。
     已退订的发件人自动过滤。
     """
-    since_date = datetime.now() - timedelta(days=days)
-    after_timestamp = int(since_date.timestamp())
+    if days == 0:
+        # days=0 表示不限时间，扫描全部历史邮件
+        date_filter = ""
+        time_desc = "全部历史"
+    else:
+        since_date = datetime.now() - timedelta(days=days)
+        after_timestamp = int(since_date.timestamp())
+        date_filter = f"after:{after_timestamp} "
+        time_desc = f"最近 {days} 天"
 
     if scan_all:
-        query = f"after:{after_timestamp}"
+        query = f"{date_filter}".strip() or ""
         label_desc = "全部邮件"
     else:
-        query = f"after:{after_timestamp} category:promotions"
+        query = f"{date_filter}category:promotions"
         label_desc = "促销邮件"
 
-    logger.info(f"扫描最近 {days} 天的{label_desc}")
-    print(f"\n📬 正在扫描最近 {days} 天的{label_desc}...")
+    logger.info(f"扫描{time_desc}的{label_desc}")
+    print(f"\n📬 正在扫描{time_desc}的{label_desc}...")
 
     message_stubs = _list_all_messages(service, query)
     total = len(message_stubs)

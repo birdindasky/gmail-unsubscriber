@@ -441,7 +441,7 @@ def build_parser() -> argparse.ArgumentParser:
     # ── scan ──
     scan_parser = subparsers.add_parser("scan", help="扫描邮件，分析广告发件人")
     scan_parser.add_argument("--days", "-d", type=int, default=30, metavar="N",
-                             help="扫描最近 N 天的邮件（默认：30）")
+                             help="扫描最近 N 天的邮件（默认：30；0 = 不限时间扫全部）")
     scan_parser.add_argument("--all", action="store_true",
                              help="扫描全部邮件（默认只扫促销标签）")
     scan_parser.add_argument("--no-ai", action="store_true", dest="no_ai",
