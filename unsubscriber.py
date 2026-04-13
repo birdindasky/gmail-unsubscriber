@@ -195,6 +195,50 @@ def unsubscribe_via_link(html_body: str) -> dict:
                 "message": f"访问退订链接失败：{e}", "found_url": unsubscribe_url, "status_code": None}
 
 
+def _fetch_html_body(service, message_id: str) -> str:
+    """按需获取单封邮件的 HTML 正文（扫描阶段只拉了元数据时使用）。"""
+    if not service or not message_id:
+        return ""
+    try:
+        msg = service.users().messages().get(
+            userId="me", id=message_id, format="full"
+        ).execute()
+        _, html = _extract_body_from_payload(msg.get("payload", {}))
+        return html
+    except Exception as e:
+        logger.warning(f"按需获取邮件正文失败（{message_id}）：{e}")
+        return ""
+
+
+def _extract_body_from_payload(payload: dict) -> tuple[str, str]:
+    """递归提取邮件正文（纯文本和 HTML）。"""
+    import base64 as _b64
+    body_text, body_html = "", ""
+    mime_type = payload.get("mimeType", "")
+    body_data = payload.get("body", {}).get("data", "")
+
+    def _decode(data: str) -> str:
+        try:
+            padded = data + "=" * (4 - len(data) % 4)
+            return _b64.urlsafe_b64decode(padded).decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+
+    if mime_type == "text/plain" and body_data:
+        body_text = _decode(body_data)
+    elif mime_type == "text/html" and body_data:
+        body_html = _decode(body_data)
+    elif "parts" in payload:
+        for part in payload["parts"]:
+            pt, ph = _extract_body_from_payload(part)
+            if pt and not body_text:
+                body_text = pt
+            if ph and not body_html:
+                body_html = ph
+
+    return body_text, body_html
+
+
 def _find_unsubscribe_link(html_body: str) -> Optional[str]:
     """从 HTML 中找到最可能是退订链接的 URL（优先取最后一个）。"""
     try:
@@ -370,7 +414,11 @@ def execute_unsubscribe(
                 _post_unsubscribe_actions(service, message_ids, archive)
                 return result
 
-    # 方式 3：正文链接
+    # 方式 3：正文链接（扫描时未拉正文，此处按需获取）
+    if not html_body:
+        sample_id = sender_group.get("sample_id", "")
+        html_body = _fetch_html_body(service, sample_id)
+
     if html_body:
         attempt = unsubscribe_via_link(html_body)
         result["details"]["link"] = attempt

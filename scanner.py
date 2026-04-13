@@ -15,9 +15,10 @@ import database
 
 logger = logging.getLogger(__name__)
 
-MAX_BATCH_SIZE = 100
+MAX_BATCH_SIZE = 50   # metadata 请求极轻量，50 并发安全
 MAX_RETRIES = 3
 RETRY_DELAY = 2
+BATCH_SLEEP = 0.3     # 每批之间休眠秒数
 
 
 def _retry_request(func, *args, **kwargs):
@@ -113,7 +114,9 @@ def _fetch_messages_batch(service, message_stubs: list[dict]) -> list[dict]:
                 service.users().messages().get(
                     userId="me",
                     id=stub["id"],
-                    format="full",
+                    format="metadata",
+                    metadataHeaders=["From", "Subject", "List-Unsubscribe",
+                                     "List-Unsubscribe-Post", "Date"],
                 )
             )
 
@@ -121,6 +124,8 @@ def _fetch_messages_batch(service, message_stubs: list[dict]) -> list[dict]:
             batch.execute()
         except Exception as e:
             logger.error(f"批量请求执行失败：{e}")
+
+        time.sleep(BATCH_SLEEP)
 
     return results
 
@@ -160,7 +165,6 @@ def _parse_message(msg: dict) -> Optional[dict]:
         }
         sender_raw = headers.get("from", "")
         sender_email, sender_domain = _parse_sender(sender_raw)
-        body_text, body_html = _extract_body(payload)
 
         return {
             "id": msg["id"],
@@ -173,8 +177,8 @@ def _parse_message(msg: dict) -> Optional[dict]:
             "list_unsubscribe": headers.get("list-unsubscribe"),
             "list_unsubscribe_post": headers.get("list-unsubscribe-post"),
             "snippet": msg.get("snippet", ""),
-            "body_text": body_text,
-            "body_html": body_html,
+            "body_text": "",   # metadata 格式不含正文，退订时按需获取
+            "body_html": "",   # 见 unsubscriber._fetch_html_body()
             "labels": msg.get("labelIds", []),
             "_headers": headers,
         }
@@ -196,33 +200,3 @@ def _parse_sender(sender_raw: str) -> tuple[str, str]:
     return email_addr, domain
 
 
-def _extract_body(payload: dict) -> tuple[str, str]:
-    """递归提取邮件正文（纯文本和 HTML）。"""
-    body_text, body_html = "", ""
-    mime_type = payload.get("mimeType", "")
-    body_data = payload.get("body", {}).get("data", "")
-
-    if mime_type == "text/plain" and body_data:
-        body_text = _decode_base64(body_data)
-    elif mime_type == "text/html" and body_data:
-        body_html = _decode_base64(body_data)
-    elif "parts" in payload:
-        for part in payload["parts"]:
-            pt, ph = _extract_body(part)
-            if pt and not body_text:
-                body_text = pt
-            if ph and not body_html:
-                body_html = ph
-
-    return body_text, body_html
-
-
-def _decode_base64(data: str) -> str:
-    """解码 Gmail API 使用的 URL-safe Base64 编码。"""
-    try:
-        import base64
-        padded = data + "=" * (4 - len(data) % 4)
-        return base64.urlsafe_b64decode(padded).decode("utf-8", errors="replace")
-    except Exception as e:
-        logger.debug(f"Base64 解码失败：{e}")
-        return ""
