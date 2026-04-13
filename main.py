@@ -100,7 +100,6 @@ def cmd_scan(args: argparse.Namespace) -> None:
     to_unsub = result["to_unsubscribe"]
     skipped = result["skipped"]
 
-    # 记录本次扫描
     database.record_scan(
         days=args.days,
         total_emails=len(emails),
@@ -118,26 +117,27 @@ def cmd_scan(args: argparse.Namespace) -> None:
         print("✅ 未发现需要退订的广告邮件。")
         return
 
+    categorized = classifier.categorize_groups(to_unsub, use_ai=use_ai)
+
     print("─" * 60)
-    print("  建议退订的发件人列表：")
+    print("  按类别分组的退订建议：")
     print("─" * 60)
 
-    for i, group in enumerate(to_unsub, 1):
-        print(f"\n  [{i}] {group['sender']}")
-        print(f"      邮箱：{group['sender_email']}")
-        print(f"      邮件数量：{group['count']} 封")
-        print(f"      判定依据：{group['reasons'][0] if group['reasons'] else '无'}")
-        if group.get("sample_subjects"):
-            print(f"      邮件主题示例：")
-            for s in group["sample_subjects"][:3]:
-                print(f"        · {s[:60]}{'...' if len(s) > 60 else ''}")
-        has_unsub = "✓" if group.get("list_unsubscribe") else "✗"
-        print(f"      支持 List-Unsubscribe：{has_unsub}")
+    for cat_name, groups in categorized.items():
+        icon = config.CATEGORY_ICONS.get(cat_name, "📧")
+        total_count = sum(g["count"] for g in groups)
+        print(f"\n  {icon} {cat_name}（{len(groups)} 个发件人，{total_count} 封）")
+
+        for i, group in enumerate(groups, 1):
+            print(f"    [{i}] {group['sender']}")
+            print(f"        邮箱：{group['sender_email']}  |  {group['count']} 封")
+            if group.get("reasons"):
+                print(f"        依据：{group['reasons'][0]}")
 
     print()
     print("─" * 60)
     print(f"  运行 'python main.py unsubscribe --dry-run' 预览退订操作")
-    print(f"  运行 'python main.py unsubscribe --confirm' 开始退订")
+    print(f"  或直接运行 'python main.py' 进入交互式菜单")
     print("─" * 60)
 
     logger.info(f"扫描完成：{len(to_unsub)} 个发件人建议退订，{skipped} 封邮件已跳过")
@@ -278,6 +278,291 @@ def _print_summary(success: int, skipped: int, failed: int) -> None:
         print("  提示：退订失败通常是因为对方不支持自动退订。")
         print("  您可以手动打开邮件，点击邮件底部的退订链接。")
     print()
+
+
+# ────────────────────────────────────────────────────────────────
+#  交互式菜单辅助函数
+# ────────────────────────────────────────────────────────────────
+
+def parse_selection(user_input: str, total: int) -> list[int]:
+    """
+    解析用户输入的选择，返回 0-based 索引列表。
+    支持：单个编号（"1"）、逗号分隔（"1,3,5"）、all。
+    输入 "0" 或无效内容返回空列表。
+    """
+    user_input = user_input.strip().lower()
+    if user_input == "all":
+        return list(range(total))
+    if user_input == "0":
+        return []
+
+    indices = []
+    for part in user_input.split(","):
+        part = part.strip()
+        if part.isdigit():
+            num = int(part)
+            if 1 <= num <= total:
+                indices.append(num - 1)
+    return indices
+
+
+def format_category_summary(categorized: dict) -> list[str]:
+    """
+    格式化类别摘要行列表。
+    返回如 ["  [A] 🛒 电商购物（2 个发件人，15 封）", ...] 的列表。
+    """
+    lines = []
+    for i, (cat_name, groups) in enumerate(categorized.items()):
+        letter = chr(ord("A") + i)
+        icon = config.CATEGORY_ICONS.get(cat_name, "📧")
+        sender_count = len(groups)
+        email_count = sum(g["count"] for g in groups)
+        lines.append(f"  [{letter}] {icon} {cat_name}（{sender_count} 个发件人，{email_count} 封）")
+    return lines
+
+
+# ────────────────────────────────────────────────────────────────
+#  交互式菜单
+# ────────────────────────────────────────────────────────────────
+
+def interactive_menu() -> None:
+    """交互式主菜单入口。"""
+    setup_logging()
+    database.init_db()
+
+    while True:
+        print()
+        print("╔══════════════════════════════════╗")
+        print("║      Gmail 邮件退订工具 📬       ║")
+        print("╠══════════════════════════════════╣")
+        print("║  1. 扫描邮件                     ║")
+        print("║  2. 执行退订                     ║")
+        print("║  3. 查看退订历史                 ║")
+        print("║  4. 管理白名单                   ║")
+        print("║  5. 设置                         ║")
+        print("║  0. 退出                         ║")
+        print("╚══════════════════════════════════╝")
+
+        choice = input("\n请选择 > ").strip()
+
+        if choice == "1":
+            _interactive_scan()
+        elif choice == "2":
+            _interactive_unsubscribe()
+        elif choice == "3":
+            _interactive_history()
+        elif choice == "4":
+            _interactive_whitelist()
+        elif choice == "5":
+            _interactive_settings()
+        elif choice == "0":
+            print("\n👋 再见！")
+            break
+        else:
+            print("❌ 无效选择，请输入 0-5 的数字。")
+
+
+def _ask_scan_params() -> tuple:
+    """交互式询问扫描参数，返回 (days, scan_all, use_ai)。"""
+    print("\n── 扫描设置 ──")
+    days_input = input("  扫描最近几天的邮件？（默认 30，输入 0 扫全部历史）> ").strip()
+    days = int(days_input) if days_input.isdigit() else 30
+
+    scope = input("  扫描范围？ 1=仅促销邮件（默认） 2=全部邮件 > ").strip()
+    scan_all = scope == "2"
+
+    ai_choice = input("  使用 AI 辅助判断？ 1=是（默认） 2=否 > ").strip()
+    use_ai = ai_choice != "2"
+
+    return days, scan_all, use_ai
+
+
+def _do_scan_and_classify(days, scan_all, use_ai):
+    """执行扫描和分类，返回 (categorized, to_unsub, emails_count)。"""
+    service = auth.get_gmail_service()
+    emails = scanner.scan_emails(service, days=days, scan_all=scan_all)
+
+    if not emails:
+        print("📭 未找到邮件。")
+        return None, None, 0
+
+    result = classifier.classify_emails(emails, use_ai=use_ai)
+    to_unsub = result["to_unsubscribe"]
+
+    if not to_unsub:
+        print("✅ 未发现需要退订的广告邮件。")
+        return None, None, len(emails)
+
+    categorized = classifier.categorize_groups(to_unsub, use_ai=use_ai)
+    return categorized, to_unsub, len(emails)
+
+
+def _display_categories(categorized: dict) -> None:
+    """展示分类结果摘要。"""
+    print(f"\n📊 扫描完成！按类别分组：\n")
+    lines = format_category_summary(categorized)
+    for line in lines:
+        print(line)
+    print()
+
+
+def _interactive_scan() -> None:
+    """交互式扫描。"""
+    days, scan_all, use_ai = _ask_scan_params()
+    categorized, to_unsub, total = _do_scan_and_classify(days, scan_all, use_ai)
+
+    if not categorized:
+        return
+
+    _display_categories(categorized)
+
+    total_senders = sum(len(g) for g in categorized.values())
+    total_emails = sum(g["count"] for groups in categorized.values() for g in groups)
+    print(f"  共 {total_senders} 个发件人建议退订，{total_emails} 封邮件")
+    print(f"\n  运行选项 2「执行退订」可按类别退订。")
+
+    database.record_scan(
+        days=days, total_emails=total,
+        candidates=total_senders, unsubscribed=0,
+    )
+
+
+def _interactive_unsubscribe() -> None:
+    """交互式退订（按类别）。"""
+    days, scan_all, use_ai = _ask_scan_params()
+
+    archive_choice = input("  退订后归档旧邮件？ 1=否（默认） 2=是 > ").strip()
+    archive = archive_choice == "2"
+
+    categorized, to_unsub, total = _do_scan_and_classify(days, scan_all, use_ai)
+    if not categorized:
+        return
+
+    service = auth.get_gmail_service()
+    cat_keys = list(categorized.keys())
+
+    success_count = 0
+    skip_count = 0
+    fail_count = 0
+
+    while True:
+        _display_categories(categorized)
+        print("  输入字母展开类别 / all 退订全部 / 0 返回主菜单")
+        choice = input("\n> ").strip().lower()
+
+        if choice == "0":
+            break
+        elif choice == "all":
+            for cat_name, groups in categorized.items():
+                s, sk, f = _unsubscribe_groups(groups, service, archive)
+                success_count += s
+                skip_count += sk
+                fail_count += f
+            _print_summary(success_count, skip_count, fail_count)
+            break
+        elif len(choice) == 1 and choice.isalpha():
+            idx = ord(choice) - ord("a")
+            if 0 <= idx < len(cat_keys):
+                cat_name = cat_keys[idx]
+                groups = categorized[cat_name]
+                icon = config.CATEGORY_ICONS.get(cat_name, "📧")
+                print(f"\n{icon} {cat_name} — {len(groups)} 个发件人：\n")
+                for j, g in enumerate(groups, 1):
+                    print(f"  [{j}] {g.get('sender', g['sender_email'])} ({g['sender_email']}) — {g['count']}封")
+                print(f"\n  输入编号退订（如 1,3,5）/ all 退订全部 / 0 返回")
+                sel = input("> ").strip()
+                indices = parse_selection(sel, len(groups))
+                if indices:
+                    selected = [groups[i] for i in indices]
+                    s, sk, f = _unsubscribe_groups(selected, service, archive)
+                    success_count += s
+                    skip_count += sk
+                    fail_count += f
+            else:
+                print("❌ 无效选择。")
+        else:
+            print("❌ 无效输入。请输入字母、all 或 0。")
+
+    if success_count or fail_count:
+        database.record_scan(
+            days=days, total_emails=total,
+            candidates=len(to_unsub), unsubscribed=success_count,
+        )
+
+
+def _unsubscribe_groups(groups: list[dict], service, archive: bool) -> tuple[int, int, int]:
+    """对一组发件人执行退订，返回 (成功, 跳过, 失败) 数量。"""
+    success = skip = fail = 0
+    for g in groups:
+        sender_email = g["sender_email"]
+        sender_display = g.get("sender", sender_email)
+
+        print(f"\n  正在退订：{sender_display} ({sender_email})")
+        exec_result = unsubscriber.execute_unsubscribe(
+            g, service=service, dry_run=False, archive=archive
+        )
+        if exec_result["success"]:
+            print(f"  ✅ 退订成功：{exec_result['message']}")
+            success += 1
+            database.record_unsubscribe(
+                sender_email=sender_email,
+                sender_name=sender_display,
+                method=exec_result.get("attempted_method", "unknown"),
+                success=True,
+            )
+        else:
+            print(f"  ❌ 退订失败：{exec_result['message']}")
+            fail += 1
+
+    return success, skip, fail
+
+
+def _interactive_history() -> None:
+    """交互式查看退订历史。"""
+    import argparse
+    args = argparse.Namespace(limit=50)
+    cmd_history(args)
+
+
+def _interactive_whitelist() -> None:
+    """交互式白名单管理。"""
+    print("\n── 白名单管理 ──")
+    print("  1. 查看白名单")
+    print("  2. 添加域名到白名单")
+    print("  0. 返回")
+    choice = input("\n> ").strip()
+
+    if choice == "1":
+        import argparse
+        args = argparse.Namespace(whitelist_action="list", func=cmd_whitelist)
+        cmd_whitelist(args)
+    elif choice == "2":
+        domain = input("  请输入要添加的域名（如 example.com）> ").strip()
+        if domain:
+            import argparse
+            args = argparse.Namespace(whitelist_action="add", domain=domain, func=cmd_whitelist)
+            cmd_whitelist(args)
+    elif choice == "0":
+        return
+    else:
+        print("❌ 无效选择。")
+
+
+def _interactive_settings() -> None:
+    """交互式设置。"""
+    print("\n── 当前设置 ──")
+    provider = getattr(config, "AI_PROVIDER", "anthropic")
+    print(f"  AI 模型：{provider}")
+    if provider == "minimax":
+        key = config.MINIMAX_API_KEY
+        print(f"  MiniMax API Key：{'已配置' if key else '❌ 未配置（设置环境变量 MINIMAX_API_KEY）'}")
+    else:
+        key = config.ANTHROPIC_API_KEY
+        print(f"  Anthropic API Key：{'已配置' if key else '❌ 未配置（设置环境变量 ANTHROPIC_API_KEY）'}")
+    print(f"  AI 辅助分类：{'开启' if config.USE_AI_CLASSIFIER else '关闭'}")
+    print()
+    print("  提示：修改 AI 提供商请设置环境变量 AI_PROVIDER=minimax 或 AI_PROVIDER=anthropic")
+    print("  提示：API Key 请设置环境变量 MINIMAX_API_KEY 或 ANTHROPIC_API_KEY")
 
 
 # ────────────────────────────────────────────────────────────────
@@ -494,6 +779,14 @@ def build_parser() -> argparse.ArgumentParser:
 # ────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    if len(sys.argv) == 1:
+        try:
+            interactive_menu()
+        except KeyboardInterrupt:
+            print("\n\n👋 再见！")
+            sys.exit(0)
+        return
+
     parser = build_parser()
     args = parser.parse_args()
 
