@@ -1,24 +1,41 @@
 # -*- coding: utf-8 -*-
 """
 邮件扫描模块 - 从 Gmail 获取邮件列表及详情
-使用 Gmail 批量 API 提升性能，并过滤已退订的发件人。
+使用小批量并发（3线程）提升性能，并过滤已退订的发件人。
 """
 
 import logging
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Optional
 
 from googleapiclient.errors import HttpError
 
+import auth
 import database
 
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RETRY_DELAY = 2
-REQUEST_SLEEP = 0.12  # 每封请求之间休眠（约 8 req/s，不触发并发限制）
-PROGRESS_INTERVAL = 20  # 每处理多少封打印一次进度
+REQUEST_SLEEP = 0.15   # 每个线程请求之间的休眠（3线程 × 6.7 req/s ≈ 20 req/s）
+CONCURRENT_WORKERS = 3  # 并发线程数（保守值，不触发 Gmail 并发限制）
+PROGRESS_INTERVAL = 50  # 每处理多少封打印一次进度
+
+# 每个线程维护自己的 Gmail service 对象
+_thread_local = threading.local()
+_service_init_lock = threading.Lock()
+
+
+def _get_thread_service():
+    """获取当前线程的 Gmail service（每线程只创建一次）。"""
+    if not hasattr(_thread_local, "service"):
+        with _service_init_lock:
+            if not hasattr(_thread_local, "service"):
+                _thread_local.service = auth.get_gmail_service()
+    return _thread_local.service
 
 
 def _retry_request(func, *args, **kwargs):
@@ -96,20 +113,21 @@ def scan_emails(service, days: int = 30, scan_all: bool = False) -> list[dict]:
 
 def _fetch_messages_batch(service, message_stubs: list[dict]) -> list[dict]:
     """
-    逐封获取邮件 metadata，遇到 429 自动退避重试。
-    放弃批量 API 是因为 Gmail 对同一用户有并发连接上限，
-    批量请求在服务器端并行执行，很容易触发 429 并丢失数据。
+    使用 3 线程并发获取邮件 metadata，遇到 429 自动退避重试。
+    每个线程维护独立的请求间隔以控制总 QPS。
     """
     results = []
     total = len(message_stubs)
+    results_lock = threading.Lock()
+    progress_lock = threading.Lock()
+    progress = {"done": 0}
 
-    for i, stub in enumerate(message_stubs):
-        if i > 0 and i % PROGRESS_INTERVAL == 0:
-            print(f"   进度：{i}/{total} 封...")
-
+    def fetch_one(stub):
+        svc = service
+        parsed = None
         for attempt in range(MAX_RETRIES):
             try:
-                msg = service.users().messages().get(
+                msg = svc.users().messages().get(
                     userId="me",
                     id=stub["id"],
                     format="metadata",
@@ -117,17 +135,11 @@ def _fetch_messages_batch(service, message_stubs: list[dict]) -> list[dict]:
                                      "List-Unsubscribe-Post", "Date"],
                 ).execute()
                 parsed = _parse_message(msg)
-                if parsed:
-                    results.append(parsed)
                 break
             except HttpError as e:
-                if e.resp.status == 429:
+                if e.resp.status in (429, 500, 503):
                     wait = RETRY_DELAY * (attempt + 1)
-                    logger.debug(f"429 速率限制，{wait}s 后重试（第 {attempt+1} 次）...")
-                    time.sleep(wait)
-                elif e.resp.status in (500, 503):
-                    wait = RETRY_DELAY * (attempt + 1)
-                    logger.warning(f"服务器错误 {e.resp.status}，{wait}s 后重试...")
+                    logger.debug(f"{e.resp.status} 错误，{wait}s 后重试（第 {attempt+1} 次）...")
                     time.sleep(wait)
                 else:
                     logger.warning(f"获取邮件失败（{stub['id']}）：{e}")
@@ -137,6 +149,22 @@ def _fetch_messages_batch(service, message_stubs: list[dict]) -> list[dict]:
                 break
 
         time.sleep(REQUEST_SLEEP)
+
+        with progress_lock:
+            progress["done"] += 1
+            done = progress["done"]
+            if done % PROGRESS_INTERVAL == 0 or done == total:
+                print(f"   进度：{done}/{total} 封...")
+
+        return parsed
+
+    with ThreadPoolExecutor(max_workers=CONCURRENT_WORKERS) as executor:
+        futures = {executor.submit(fetch_one, stub): stub for stub in message_stubs}
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                with results_lock:
+                    results.append(result)
 
     return results
 

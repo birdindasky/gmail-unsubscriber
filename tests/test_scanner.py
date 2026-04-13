@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+import threading
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -82,3 +83,36 @@ def test_fetch_messages_batch_returns_list():
 
     assert len(results) == 1
     assert results[0]["sender_email"] == "test@example.com"
+
+
+def test_fetch_messages_batch_concurrent():
+    """_fetch_messages_batch 应使用多线程并发获取邮件。"""
+    msgs = [_make_msg(f"id-{i}", f"test{i}@example.com") for i in range(6)]
+    stubs = [{"id": f"id-{i}"} for i in range(6)]
+
+    call_count = {"n": 0}
+    original_lock = threading.Lock()
+
+    def mock_execute_factory(msg):
+        def mock_execute():
+            with original_lock:
+                call_count["n"] += 1
+            return msg
+        return mock_execute
+
+    mock_service = MagicMock()
+    def mock_get(**kwargs):
+        msg_id = kwargs["id"]
+        idx = int(msg_id.split("-")[1])
+        result = MagicMock()
+        result.execute = mock_execute_factory(msgs[idx])
+        return result
+
+    mock_service.users.return_value.messages.return_value.get = mock_get
+
+    with patch("scanner.time") as mock_time:
+        mock_time.sleep = MagicMock()
+        results = scanner._fetch_messages_batch(mock_service, stubs)
+
+    assert len(results) == 6
+    assert call_count["n"] == 6
