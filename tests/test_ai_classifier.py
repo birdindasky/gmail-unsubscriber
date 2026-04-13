@@ -105,3 +105,124 @@ def test_api_error_returns_false():
 
     assert is_ad is False
     assert "失败" in reason
+
+
+def test_minimax_classify_ad_email():
+    """MiniMax 提供商应能正确判断广告邮件。"""
+    import ai_classifier
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = json.dumps({"is_ad": True, "reason": "促销邮件"})
+    mock_client.chat.completions.create.return_value = mock_response
+
+    with patch("ai_classifier._get_openai_client", return_value=mock_client), \
+         patch("ai_classifier.config") as mock_config:
+        mock_config.USE_AI_CLASSIFIER = True
+        mock_config.AI_PROVIDER = "minimax"
+        mock_config.MINIMAX_API_KEY = "test-key"
+        mock_config.MINIMAX_MODEL = "MiniMax-Text-01"
+        mock_config.MINIMAX_BASE_URL = "https://api.minimax.chat/v1"
+        mock_config.AI_MAX_TOKENS = 150
+
+        is_ad, reason = ai_classifier.classify_with_ai(
+            sender="promo@shop.example.com",
+            subject="限时折扣！",
+            snippet="今天打五折"
+        )
+
+    assert is_ad is True
+    assert "促销" in reason
+
+
+def test_minimax_classify_non_ad():
+    """MiniMax 应能识别非广告邮件。"""
+    import ai_classifier
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = json.dumps({"is_ad": False, "reason": "系统通知"})
+    mock_client.chat.completions.create.return_value = mock_response
+
+    with patch("ai_classifier._get_openai_client", return_value=mock_client), \
+         patch("ai_classifier.config") as mock_config:
+        mock_config.USE_AI_CLASSIFIER = True
+        mock_config.AI_PROVIDER = "minimax"
+        mock_config.MINIMAX_API_KEY = "test-key"
+        mock_config.MINIMAX_MODEL = "MiniMax-Text-01"
+        mock_config.MINIMAX_BASE_URL = "https://api.minimax.chat/v1"
+        mock_config.AI_MAX_TOKENS = 150
+
+        is_ad, reason = ai_classifier.classify_with_ai(
+            sender="noreply@github.com",
+            subject="PR merged",
+            snippet="Your PR was merged"
+        )
+
+    assert is_ad is False
+
+
+def test_categorize_with_ai_returns_category():
+    """categorize_with_ai 应返回有效类别名。"""
+    import ai_classifier
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = json.dumps({"category": "电商购物"})
+    mock_client.chat.completions.create.return_value = mock_response
+
+    with patch("ai_classifier._get_openai_client", return_value=mock_client), \
+         patch("ai_classifier.config") as mock_config:
+        mock_config.AI_PROVIDER = "minimax"
+        mock_config.MINIMAX_API_KEY = "test-key"
+        mock_config.MINIMAX_MODEL = "MiniMax-Text-01"
+        mock_config.MINIMAX_BASE_URL = "https://api.minimax.chat/v1"
+        mock_config.AI_MAX_TOKENS = 150
+        mock_config.CATEGORY_NAMES = ["电商购物", "社交媒体", "其他"]
+
+        category = ai_classifier.categorize_with_ai("淘宝", "限时折扣")
+
+    assert category == "电商购物"
+
+
+def test_categorize_with_ai_invalid_returns_other():
+    """AI 返回无效类别时应回退到'其他'。"""
+    import ai_classifier
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = json.dumps({"category": "不存在的类别"})
+    mock_client.chat.completions.create.return_value = mock_response
+
+    with patch("ai_classifier._get_openai_client", return_value=mock_client), \
+         patch("ai_classifier.config") as mock_config:
+        mock_config.AI_PROVIDER = "minimax"
+        mock_config.MINIMAX_API_KEY = "test-key"
+        mock_config.MINIMAX_MODEL = "MiniMax-Text-01"
+        mock_config.MINIMAX_BASE_URL = "https://api.minimax.chat/v1"
+        mock_config.AI_MAX_TOKENS = 150
+        mock_config.CATEGORY_NAMES = ["电商购物", "社交媒体", "其他"]
+
+        category = ai_classifier.categorize_with_ai("unknown@xyz.com", "Hello")
+
+    assert category == "其他"
+
+
+def test_categorize_with_ai_error_returns_other():
+    """AI 调用失败时应回退到'其他'。"""
+    import ai_classifier
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = Exception("timeout")
+
+    with patch("ai_classifier._get_openai_client", return_value=mock_client), \
+         patch("ai_classifier.config") as mock_config:
+        mock_config.AI_PROVIDER = "minimax"
+        mock_config.MINIMAX_API_KEY = "test-key"
+        mock_config.MINIMAX_MODEL = "MiniMax-Text-01"
+        mock_config.MINIMAX_BASE_URL = "https://api.minimax.chat/v1"
+        mock_config.AI_MAX_TOKENS = 150
+        mock_config.CATEGORY_NAMES = ["电商购物", "其他"]
+
+        category = ai_classifier.categorize_with_ai("x@y.com", "test")
+
+    assert category == "其他"
