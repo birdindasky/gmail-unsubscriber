@@ -123,7 +123,7 @@ def _fetch_messages_batch(service, message_stubs: list[dict]) -> list[dict]:
     progress = {"done": 0}
 
     def fetch_one(stub):
-        svc = service
+        svc = _get_thread_service()
         parsed = None
         for attempt in range(MAX_RETRIES):
             try:

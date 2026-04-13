@@ -74,10 +74,10 @@ def test_fetch_messages_batch_returns_list():
     msg = _make_msg("abc", "test@example.com")
     mock_service = MagicMock()
 
-    # 模拟 service.users().messages().get(...).execute() 返回邮件
     mock_service.users.return_value.messages.return_value.get.return_value.execute.return_value = msg
 
-    with patch("scanner.time") as mock_time:
+    with patch("scanner._get_thread_service", return_value=mock_service), \
+         patch("scanner.time") as mock_time:
         mock_time.sleep = MagicMock()
         results = scanner._fetch_messages_batch(mock_service, [{"id": "abc"}])
 
@@ -110,7 +110,8 @@ def test_fetch_messages_batch_concurrent():
 
     mock_service.users.return_value.messages.return_value.get = mock_get
 
-    with patch("scanner.time") as mock_time:
+    with patch("scanner._get_thread_service", return_value=mock_service), \
+         patch("scanner.time") as mock_time:
         mock_time.sleep = MagicMock()
         results = scanner._fetch_messages_batch(mock_service, stubs)
 
