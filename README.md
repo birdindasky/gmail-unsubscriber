@@ -25,8 +25,37 @@ pip install -r requirements.txt
 # 将 credentials.json 放入项目根目录
 
 # 4. 首次运行（会弹出浏览器授权）
-python3 main.py scan
+python3 main.py
 ```
+
+## 📖 两种使用方式
+
+### 方式一：交互式菜单（推荐新手）
+
+直接运行，跟着菜单操作：
+
+```bash
+python3 main.py
+```
+
+菜单会引导你完成扫描、按类别退订、管理白名单等操作。
+
+### 方式二：命令行参数（高级用户）
+
+```bash
+python3 main.py scan                              # 扫描最近 30 天
+python3 main.py scan --days 0 --all               # 扫全部历史
+python3 main.py unsubscribe --dry-run             # 预览退订
+python3 main.py unsubscribe --confirm             # 逐个确认退订
+python3 main.py unsubscribe --confirm --auto      # 自动退订全部
+```
+
+## 🤖 AI 支持
+
+支持两种 AI 模型辅助判断：
+
+- **MiniMax**（默认）：设置环境变量 `MINIMAX_API_KEY`
+- **Anthropic Claude**：设置环境变量 `ANTHROPIC_API_KEY` 和 `AI_PROVIDER=anthropic`
 
 ## 📖 文档
 
@@ -40,11 +69,3 @@ python3 main.py scan
 2. **白名单机制**：重要邮件不会被退订
 3. **不删除任何邮件**：退订和删除是独立操作
 4. **OAuth 安全**：使用 Gmail API 而非 IMAP 密码
-
-## 📋 推荐使用流程
-
-1. `python3 main.py scan` - 查看检测到的广告邮件
-2. 检查白名单是否漏了重要发件人
-3. `python3 main.py unsubscribe --dry-run` - 预览模拟
-4. `python3 main.py unsubscribe --confirm` - 逐个确认执行
-5. 几天后再 `scan` 一次看效果
