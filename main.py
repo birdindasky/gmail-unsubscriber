@@ -7,14 +7,19 @@ Gmail 自动退订工具 - 主入口
 命令：
   scan              扫描邮件（不执行退订）
   unsubscribe       执行退订
+  history           查看退订历史
   whitelist         管理白名单
   logs              查看日志
 
 示例：
   python main.py scan --days 30
+  python main.py scan --all --no-ai
   python main.py unsubscribe --dry-run
   python main.py unsubscribe --confirm
   python main.py unsubscribe --confirm --auto
+  python main.py unsubscribe --confirm --archive
+  python main.py history
+  python main.py history --limit 20
   python main.py whitelist add example.com
   python main.py whitelist list
   python main.py logs
@@ -150,6 +155,10 @@ def cmd_unsubscribe(args: argparse.Namespace) -> None:
     archive = getattr(args, "archive", False)
     use_ai = not getattr(args, "no_ai", False)
 
+    if auto_mode and not confirm_mode:
+        print("❌ --auto 必须配合 --confirm 使用。示例：python main.py unsubscribe --confirm --auto")
+        sys.exit(1)
+
     if dry_run:
         print("=" * 60)
         print("  Gmail 退订工具 - 试运行模式（不会实际执行退订）")
@@ -240,12 +249,6 @@ def cmd_unsubscribe(args: argparse.Namespace) -> None:
         else:
             print(f"         ❌ 退订失败：{exec_result['message']}")
             fail_count += 1
-            database.record_unsubscribe(
-                sender_email=sender_email,
-                sender_name=sender_display,
-                method="failed",
-                success=False,
-            )
 
         print()
 
