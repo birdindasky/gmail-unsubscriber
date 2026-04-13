@@ -138,10 +138,14 @@ def save_user_whitelist(domains: list[str]) -> None:
 
 
 def get_all_whitelist_domains() -> list[str]:
-    """返回内置白名单 + 用户自定义白名单的合集。"""
-    user_domains = load_user_whitelist()
-    all_domains = list(set(WHITELIST_DOMAINS + user_domains))
-    return all_domains
+    """返回内置白名单 + 用户自定义白名单（从 SQLite 读取）的合集。"""
+    try:
+        import database
+        user_domains = database.get_user_whitelist()
+    except Exception:
+        # 数据库未初始化时回退到 JSON 文件
+        user_domains = load_user_whitelist()
+    return list(set(WHITELIST_DOMAINS + user_domains))
 
 
 def add_to_user_whitelist(domain: str) -> bool:
