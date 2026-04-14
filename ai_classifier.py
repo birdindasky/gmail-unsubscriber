@@ -15,6 +15,76 @@ import config
 
 logger = logging.getLogger(__name__)
 
+# ────────────────────────────────────────────────────────────────
+#  提供商注册表
+# ────────────────────────────────────────────────────────────────
+
+PROVIDERS = {
+    "openai": {
+        "name": "OpenAI",
+        "protocol": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "default_model": "gpt-4o-mini",
+        "key_hint": "sk-...",
+    },
+    "anthropic": {
+        "name": "Anthropic Claude",
+        "protocol": "anthropic",
+        "base_url": None,
+        "default_model": "claude-haiku-4-5",
+        "key_hint": "sk-ant-...",
+    },
+    "minimax": {
+        "name": "MiniMax",
+        "protocol": "anthropic",
+        "base_url": "https://api.minimaxi.com/anthropic",
+        "default_model": "MiniMax-M2",
+        "key_hint": "sk-cp-...",
+    },
+    "deepseek": {
+        "name": "DeepSeek",
+        "protocol": "openai",
+        "base_url": "https://api.deepseek.com/v1",
+        "default_model": "deepseek-chat",
+        "key_hint": "sk-...",
+    },
+    "moonshot": {
+        "name": "Moonshot (Kimi)",
+        "protocol": "openai",
+        "base_url": "https://api.moonshot.cn/v1",
+        "default_model": "moonshot-v1-8k",
+        "key_hint": "sk-...",
+    },
+    "qwen": {
+        "name": "通义千问",
+        "protocol": "openai",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "default_model": "qwen-turbo",
+        "key_hint": "sk-...",
+    },
+    "zhipu": {
+        "name": "智谱 GLM",
+        "protocol": "openai",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "default_model": "glm-4-flash",
+        "key_hint": "...",
+    },
+    "ollama": {
+        "name": "Ollama (本地)",
+        "protocol": "openai",
+        "base_url": "http://localhost:11434/v1",
+        "default_model": "llama3",
+        "key_hint": "随便填",
+    },
+    "custom": {
+        "name": "自定义 OpenAI 兼容",
+        "protocol": "openai",
+        "base_url": None,
+        "default_model": None,
+        "key_hint": "...",
+    },
+}
+
 
 def _get_anthropic_client():
     import anthropic
