@@ -34,7 +34,6 @@ def test_save_then_load_roundtrip(tmp_config):
 
 
 def test_mask_key_long():
-    assert user_config.mask_key("sk-abcdef1234567890xyz") == "sk-abc***...4567890xyz"[:0] or True
     masked = user_config.mask_key("sk-abcdef1234567890xyz")
     assert masked.startswith("sk-abc")
     assert masked.endswith("890xyz")
