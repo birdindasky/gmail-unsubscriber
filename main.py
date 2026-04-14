@@ -574,20 +574,121 @@ def _interactive_whitelist() -> None:
 
 
 def _interactive_settings() -> None:
-    """交互式设置。"""
+    """交互式设置菜单。"""
     import user_config
-    active = user_config.get_active_provider()
-    print("\n── 当前设置 ──")
-    if active:
-        masked = user_config.mask_key(active["api_key"])
-        print(f"  AI 提供商：{active['id']}")
-        print(f"  模型：{active['model']}")
-        print(f"  API Key：{masked}")
+    from ai_classifier import PROVIDERS
+
+    while True:
+        provider = user_config.get_active_provider()
+        if provider:
+            meta = PROVIDERS.get(provider["id"], {})
+            status = f"{meta.get('name', provider['id'])} / {provider['model']}"
+        else:
+            status = "未配置"
+
+        print("\n╔══════════════════════════════════╗")
+        print("║       ⚙️  设置                    ║")
+        print("╠══════════════════════════════════╣")
+        print(f"║  1. 配置 AI 提供商 (当前：{status})")
+        print( "║  2. 查看当前配置")
+        print( "║  0. 返回")
+        print( "╚══════════════════════════════════╝")
+
+        choice = input("请选择：").strip()
+        if choice == "1":
+            _configure_ai_provider()
+        elif choice == "2":
+            _show_current_ai_config()
+        elif choice == "0":
+            return
+        else:
+            print("❌ 无效选择")
+
+
+def _configure_ai_provider() -> None:
+    """交互式配置 AI 提供商。"""
+    import user_config
+    from ai_classifier import PROVIDERS, test_connection
+
+    order = ["openai", "anthropic", "minimax", "deepseek", "moonshot", "qwen", "zhipu", "ollama", "custom"]
+    print("\n请选择 AI 提供商：")
+    for i, pid in enumerate(order, 1):
+        meta = PROVIDERS[pid]
+        print(f"  {i}. {meta['name']:<22} ({meta['key_hint']})")
+    print("  0. 返回")
+
+    sel = input("请选择：").strip()
+    if sel == "0":
+        return
+    try:
+        idx = int(sel) - 1
+        provider_id = order[idx]
+    except (ValueError, IndexError):
+        print("❌ 无效选择")
+        return
+
+    meta = PROVIDERS[provider_id]
+    print(f"\n【{meta['name']}】")
+
+    base_url = meta["base_url"]
+    if provider_id == "custom":
+        base_url = input("请输入 base_url: ").strip()
+        if not base_url:
+            print("❌ base_url 不能为空")
+            return
+        model = input("请输入 model: ").strip()
+        if not model:
+            print("❌ model 不能为空")
+            return
     else:
-        print("  AI 提供商：❌ 未配置")
-    print(f"  AI 辅助分类：{'开启' if config.USE_AI_CLASSIFIER else '关闭'}")
-    print()
-    print("  提示：完整的 AI 提供商配置菜单将在后续版本开放。")
+        model = meta["default_model"]
+
+    api_key = input(f"请输入 API Key ({meta['key_hint']}): ").strip()
+    if not api_key:
+        print("❌ API Key 不能为空")
+        return
+
+    if provider_id != "custom":
+        ans = input(f"默认模型：{model}，使用默认吗？(Y/n): ").strip().lower()
+        if ans == "n":
+            model = input("请输入模型名: ").strip()
+            if not model:
+                print("❌ 模型名不能为空")
+                return
+
+    print("\n🔍 测试连接中...")
+    ok, msg = test_connection(provider_id, api_key, model, base_url)
+    if not ok:
+        print(f"❌ 连接失败：{msg}")
+        print("   配置未保存，请检查 Key / 模型 / 网络后重试")
+        return
+
+    user_config.set_active_provider(
+        provider_id, api_key, model,
+        base_url if provider_id == "custom" else None,
+    )
+    print(f"✅ 连接成功！已保存配置。当前使用：{meta['name']}（模型：{model}）")
+
+
+def _show_current_ai_config() -> None:
+    """查看当前 AI 配置（Key 脱敏）。"""
+    import user_config
+    from ai_classifier import PROVIDERS
+
+    provider = user_config.get_active_provider()
+    if not provider:
+        print("\n当前未配置 AI 提供商。")
+        print("运行设置菜单 → 1. 配置 AI 提供商 进行配置。")
+        return
+
+    meta = PROVIDERS.get(provider["id"], {})
+    print("\n当前 AI 配置：")
+    print(f"  提供商：{meta.get('name', provider['id'])}")
+    print(f"  模型：  {provider['model']}")
+    print(f"  Key：   {user_config.mask_key(provider['api_key'])}")
+    if provider.get("base_url"):
+        print(f"  Base URL：{provider['base_url']}")
+    print(f"  AI 总开关：{'开启' if config.USE_AI_CLASSIFIER else '关闭'}")
 
 
 # ────────────────────────────────────────────────────────────────
