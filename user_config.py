@@ -63,3 +63,25 @@ def set_active_provider(provider_id: str, api_key: str, model: str,
         "base_url": base_url,
     }
     save_config(cfg)
+
+
+def migrate_from_env() -> bool:
+    """首次启动时从环境变量迁移 AI 配置。已有配置则不迁移。返回是否迁移。"""
+    if os.path.exists(CONFIG_FILE):
+        return False
+
+    provider_env = os.environ.get("AI_PROVIDER", "").strip().lower()
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    minimax_key = os.environ.get("MINIMAX_API_KEY", "").strip()
+
+    if provider_env == "anthropic" and anthropic_key:
+        set_active_provider("anthropic", anthropic_key, "claude-haiku-4-5")
+        return True
+    if minimax_key:
+        set_active_provider("minimax", minimax_key, "MiniMax-M2")
+        return True
+    if anthropic_key:
+        set_active_provider("anthropic", anthropic_key, "claude-haiku-4-5")
+        return True
+
+    return False

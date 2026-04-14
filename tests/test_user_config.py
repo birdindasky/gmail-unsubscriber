@@ -54,3 +54,48 @@ def test_get_and_set_active_provider(tmp_config):
     assert active["api_key"] == "sk-xyz"
     assert active["model"] == "MiniMax-M2"
     assert active["base_url"] is None
+
+
+def test_migrate_from_env_minimax(tmp_path, monkeypatch):
+    monkeypatch.setattr(user_config, "CONFIG_FILE", str(tmp_path / "cfg.json"))
+    monkeypatch.setenv("MINIMAX_API_KEY", "sk-cp-test")
+    monkeypatch.delenv("AI_PROVIDER", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    assert user_config.migrate_from_env() is True
+    provider = user_config.get_active_provider()
+    assert provider["id"] == "minimax"
+    assert provider["api_key"] == "sk-cp-test"
+    assert provider["model"] == "MiniMax-M2"
+
+
+def test_migrate_from_env_anthropic(tmp_path, monkeypatch):
+    monkeypatch.setattr(user_config, "CONFIG_FILE", str(tmp_path / "cfg.json"))
+    monkeypatch.setenv("AI_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
+
+    assert user_config.migrate_from_env() is True
+    provider = user_config.get_active_provider()
+    assert provider["id"] == "anthropic"
+    assert provider["api_key"] == "sk-ant-test"
+
+
+def test_migrate_skips_if_config_exists(tmp_path, monkeypatch):
+    path = tmp_path / "cfg.json"
+    path.write_text('{"ai_provider": "deepseek", "providers": {"deepseek": {"api_key": "x", "model": "y"}}}')
+    monkeypatch.setattr(user_config, "CONFIG_FILE", str(path))
+    monkeypatch.setenv("MINIMAX_API_KEY", "sk-cp-should-not-overwrite")
+
+    assert user_config.migrate_from_env() is False
+    assert user_config.get_active_provider()["id"] == "deepseek"
+
+
+def test_migrate_no_env_returns_false(tmp_path, monkeypatch):
+    monkeypatch.setattr(user_config, "CONFIG_FILE", str(tmp_path / "cfg.json"))
+    monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("AI_PROVIDER", raising=False)
+
+    assert user_config.migrate_from_env() is False
+    assert user_config.get_active_provider() is None
