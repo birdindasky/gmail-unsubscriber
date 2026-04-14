@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+from typing import Optional
 
 import config
 import user_config
@@ -228,3 +229,25 @@ def categorize_with_ai(sender: str, subject: str) -> str:
     except Exception as e:
         logger.warning(f"AI 分类调用失败：{e}")
         return "其他"
+
+
+def test_connection(provider_id: str, api_key: str, model: str, base_url: Optional[str] = None) -> tuple[bool, str]:
+    """测试给定凭证能否成功调用 AI。返回 (是否成功, 消息)。"""
+    meta = PROVIDERS.get(provider_id)
+    if not meta:
+        return False, f"未知提供商：{provider_id}"
+
+    probe_provider = {
+        "id": provider_id,
+        "api_key": api_key,
+        "model": model,
+        "base_url": base_url or meta.get("base_url"),
+    }
+    try:
+        if meta["protocol"] == "openai":
+            _call_openai("Say hi in one word.", probe_provider)
+        else:
+            _call_anthropic("Say hi in one word.", probe_provider)
+        return True, "连接成功"
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"

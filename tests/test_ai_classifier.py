@@ -240,3 +240,34 @@ def test_no_provider_skips_ai():
         is_ad, reason = ai_classifier.classify_with_ai("s", "subj", "snip")
     assert is_ad is False
     assert "未配置" in reason or "跳过" in reason
+
+
+def test_test_connection_success():
+    import ai_classifier
+    with patch("ai_classifier._call_openai", return_value="hi"):
+        ok, msg = ai_classifier.test_connection(
+            "deepseek", "sk-abc", "deepseek-chat", None
+        )
+    assert ok is True
+    assert "成功" in msg
+
+
+def test_test_connection_auth_fail():
+    import ai_classifier
+
+    def _raise(*a, **kw):
+        raise Exception("401 Unauthorized: invalid api key")
+
+    with patch("ai_classifier._call_openai", side_effect=_raise):
+        ok, msg = ai_classifier.test_connection(
+            "deepseek", "sk-bad", "deepseek-chat", None
+        )
+    assert ok is False
+    assert "401" in msg or "无效" in msg or "Unauthorized" in msg
+
+
+def test_test_connection_unknown_provider():
+    import ai_classifier
+    ok, msg = ai_classifier.test_connection("not-a-provider", "x", "x", None)
+    assert ok is False
+    assert "未知" in msg
