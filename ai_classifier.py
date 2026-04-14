@@ -106,7 +106,7 @@ def _call_anthropic(prompt: str, provider: dict) -> str:
     client = anthropic.Anthropic(**kwargs)
     message = client.messages.create(
         model=provider["model"],
-        max_tokens=1024,
+        max_tokens=getattr(config, "AI_MAX_TOKENS", 1024),
         messages=[{"role": "user", "content": prompt}],
     )
     return _extract_text_from_response(message)
@@ -120,7 +120,7 @@ def _call_openai(prompt: str, provider: dict) -> str:
     client = openai.OpenAI(**kwargs)
     resp = client.chat.completions.create(
         model=provider["model"],
-        max_tokens=1024,
+        max_tokens=getattr(config, "AI_MAX_TOKENS", 1024),
         messages=[{"role": "user", "content": prompt}],
     )
     return resp.choices[0].message.content.strip() if resp.choices else ""
@@ -205,6 +205,10 @@ def categorize_with_ai(sender: str, subject: str) -> str:
     调用 AI 判断发件人所属的邮件类别。
     Returns: 类别名（如 "电商购物"），失败时返回 "其他"
     """
+    available, _ = _check_ai_available()
+    if not available:
+        return "其他"
+
     categories_str = "、".join(config.CATEGORY_NAMES)
     prompt = (
         f"根据发件人和邮件主题，判断这封邮件属于以下哪个类别：{categories_str}\n"
