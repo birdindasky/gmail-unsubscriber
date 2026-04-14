@@ -9,6 +9,7 @@ AI 分类模块 - 支持 MiniMax 和 Anthropic 两种 AI 提供商
 import json
 import logging
 import os
+import re
 
 import config
 
@@ -28,11 +29,14 @@ def _get_minimax_client():
 
 
 def _extract_text_from_response(message) -> str:
-    """从 AI 响应中提取文本，跳过推理模型的 thinking block。"""
+    """从 AI 响应中提取文本，兼容推理模型只返回 ThinkingBlock 的情况。"""
     for block in message.content:
-        if block.type == "text":
+        if getattr(block, "type", "") == "text" and hasattr(block, "text"):
             return block.text.strip()
-    return message.content[-1].text.strip() if message.content else ""
+    for block in message.content:
+        if getattr(block, "type", "") == "thinking" and hasattr(block, "thinking"):
+            return block.thinking.strip()
+    return ""
 
 
 def _call_anthropic(prompt: str) -> str:
@@ -49,7 +53,7 @@ def _call_minimax(prompt: str) -> str:
     client = _get_minimax_client()
     message = client.messages.create(
         model=config.MINIMAX_MODEL,
-        max_tokens=config.AI_MAX_TOKENS,
+        max_tokens=max(config.AI_MAX_TOKENS, 1024),
         messages=[{"role": "user", "content": prompt}],
     )
     return _extract_text_from_response(message)
@@ -68,7 +72,16 @@ def _parse_json_response(text: str) -> dict:
         text = text.split("```")[1]
         if text.startswith("json"):
             text = text[4:]
-    return json.loads(text)
+    try:
+        return json.loads(text.strip())
+    except json.JSONDecodeError:
+        pass
+    for match in re.finditer(r'\{[^{}]+\}', text):
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            continue
+    raise json.JSONDecodeError("No JSON found", text, 0)
 
 
 def _check_ai_available() -> tuple[bool, str]:

@@ -5,6 +5,7 @@
 """
 
 import logging
+import ssl
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -52,6 +53,11 @@ def _retry_request(func, *args, **kwargs):
                 last_error = e
             else:
                 raise
+        except (ssl.SSLError, ConnectionError, OSError) as e:
+            wait = RETRY_DELAY * (attempt + 1)
+            logger.warning(f"网络连接错误，{wait}s 后重试（第 {attempt+1} 次）：{e}")
+            time.sleep(wait)
+            last_error = e
     raise last_error
 
 
@@ -144,6 +150,10 @@ def _fetch_messages_batch(service, message_stubs: list[dict]) -> list[dict]:
                 else:
                     logger.warning(f"获取邮件失败（{stub['id']}）：{e}")
                     break
+            except (ssl.SSLError, ConnectionError, OSError) as e:
+                wait = RETRY_DELAY * (attempt + 1)
+                logger.debug(f"网络错误，{wait}s 后重试（第 {attempt+1} 次）：{e}")
+                time.sleep(wait)
             except Exception as e:
                 logger.warning(f"邮件解析失败（{stub['id']}）：{e}")
                 break

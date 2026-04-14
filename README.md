@@ -9,10 +9,12 @@
 - **不删除邮件**：只退订，不动收件箱
 - **逐个确认**：默认逐个确认每个发件人
 
-## 🚀 3 步快速启动
+> 💻 **支持平台**：Mac / Linux / Windows / WSL2，全平台通用。Windows 原生和 WSL2 的命令差异详见 [USAGE_GUIDE.md](./docs/USAGE_GUIDE.md#2-首次配置只需做一次)。
+
+## 🚀 4 步快速启动
 
 ```bash
-# 1. 克隆项目
+# 1. 进入项目目录
 cd /path/to/gmail-unsubscriber
 
 # 2. 创建虚拟环境并安装依赖
@@ -21,7 +23,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # 3. 获取 Google OAuth 凭证
-# 参考 docs/USAGE.md 完成 Google Cloud Console 配置
+# 参考 docs/USAGE_GUIDE.md 完成 Google Cloud Console 配置
 # 将 credentials.json 放入项目根目录
 
 # 4. 首次运行（会弹出浏览器授权）
@@ -52,10 +54,12 @@ python3 main.py unsubscribe --confirm --auto      # 自动退订全部
 
 ## 🤖 AI 支持
 
-支持两种 AI 模型辅助判断：
+支持两种 AI 提供商辅助判断模糊邮件、给发件人自动归类：
 
-- **MiniMax**（默认）：设置环境变量 `MINIMAX_API_KEY`
-- **Anthropic Claude**：设置环境变量 `ANTHROPIC_API_KEY` 和 `AI_PROVIDER=anthropic`
+- **MiniMax**（默认）：`export MINIMAX_API_KEY="你的Key"`
+- **Anthropic Claude**：`export AI_PROVIDER=anthropic` + `export ANTHROPIC_API_KEY="你的Key"`
+
+同一发件人只调用一次 AI（结果会缓存到运行结束），节省费用。未配置 Key 时自动跳过 AI，不影响基本功能。
 
 ## 📖 文档
 

@@ -9,8 +9,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def _make_ai_response(is_ad: bool, reason: str) -> MagicMock:
     mock_response = MagicMock()
-    mock_response.content = [MagicMock()]
-    mock_response.content[0].text = json.dumps({"is_ad": is_ad, "reason": reason})
+    text_block = MagicMock()
+    text_block.type = "text"
+    text_block.text = json.dumps({"is_ad": is_ad, "reason": reason})
+    mock_response.content = [text_block]
     return mock_response
 
 

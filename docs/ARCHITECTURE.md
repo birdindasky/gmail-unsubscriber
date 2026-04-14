@@ -4,38 +4,37 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        用户 (命令行)                              │
-│           python main.py scan / unsubscribe / whitelist          │
+│                     用户 (命令行 / 交互菜单)                      │
+│    python main.py  ·  scan / unsubscribe / whitelist / history   │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                         main.py                                  │
-│               CLI 解析 · 日志初始化 · 流程调度                    │
-└────┬──────────────┬──────────────────┬───────────────────────────┘
-     │              │                  │
-     ▼              ▼                  ▼
-┌─────────┐  ┌──────────┐       ┌──────────────┐
-│  auth   │  │ scanner  │       │  classifier  │
-│  .py    │  │  .py     │       │    .py       │
-│ OAuth   │  │ Gmail API│       │ 白名单/广告  │
-│ 认证    │  │ 邮件拉取 │       │ 敏感词判断   │
-└────┬────┘  └────┬─────┘       └──────┬───────┘
-     │            │                    │
-     │            ▼                    ▼
-     │     ┌──────────────┐    ┌───────────────────┐
-     │     │  config.py   │    │  unsubscriber.py  │
-     └────▶│ 白名单/关键词│    │ 三种退订方式执行   │
-           │ 用户白名单   │    │ HTTP/mailto/链接  │
-           └──────────────┘    └───────────────────┘
-                                        │
-                    ┌───────────────────┼────────────────────┐
-                    ▼                   ▼                    ▼
-           ┌─────────────┐    ┌──────────────┐    ┌──────────────┐
-           │ 一键退订     │    │ mailto 退订  │    │ 正文链接退订  │
-           │ POST 请求   │    │ 发退订邮件   │    │ 解析HTML/GET │
-           │ (RFC 8058)  │    │             │    │             │
-           └─────────────┘    └──────────────┘    └──────────────┘
+│    CLI 解析 · 交互菜单 · 日志初始化 · 扫描结果缓存 · 流程调度     │
+└──┬────────┬──────────┬──────────────────┬──────────────┬────────┘
+   │        │          │                  │              │
+   ▼        ▼          ▼                  ▼              ▼
+┌─────┐ ┌────────┐ ┌───────────┐   ┌──────────────┐ ┌──────────┐
+│auth │ │scanner │ │ classifier│   │ unsubscriber │ │ database │
+│ .py │ │ .py    │ │  .py      │   │  .py         │ │  .py     │
+│OAuth│ │3 线程并│ │白名单/广告│   │三种退订方式  │ │SQLite 持 │
+│认证 │ │发 + 重试│ │敏感词判断│   │HTTP/mailto/  │ │久化：已退│
+│     │ │Gmail API│ │+ AI 辅助 │   │  正文链接    │ │订 + 历史 │
+└──┬──┘ └───┬────┘ └─────┬─────┘   └──────┬───────┘ └────┬─────┘
+   │        │            │                │              │
+   │        │            ▼                │              │
+   │        │   ┌─────────────────┐       │              │
+   │        │   │ ai_classifier.py│       │              │
+   │        │   │ MiniMax / Claude│       │              │
+   │        │   │ 2 层缓存防重复  │       │              │
+   │        │   └────────┬────────┘       │              │
+   │        │            │                │              │
+   │        ▼            ▼                ▼              │
+   │     ┌─────────────────────────────────────┐         │
+   └────▶│           config.py                 │◀────────┘
+         │ 白名单/关键词/AI 提供商开关/域名分类 │
+         └─────────────────────────────────────┘
 ```
 
 ## 数据流向
@@ -46,15 +45,26 @@ Gmail 服务器
     │ Gmail API (OAuth 2.0 认证)
     ▼
 scanner.scan_emails()
-    │ 返回邮件列表（主题/发件人/正文/头部）
+    │ 3 线程并发拉取 metadata，遇 429/SSL 自动重试
+    │ database.is_already_unsubscribed() 过滤已退订发件人
+    │ 返回邮件列表（主题/发件人/头部/Gmail 标签）
     ▼
 classifier.classify_emails()
-    │  
-    ├─ is_whitelisted()      → 白名单域名 → 跳过
-    ├─ is_sensitive()        → 敏感关键词 → 跳过
-    └─ is_advertisement()    → 2+条件命中 → 标记退订
     │
-    │ 返回待退订发件人分组列表
+    ├─ is_whitelisted()         → 白名单域名      → 跳过
+    ├─ is_sensitive()           → 敏感关键词      → 跳过
+    ├─ is_advertisement()       → ≥ 2 条件命中    → 标记退订
+    └─ 恰好 1 条件命中 → ai_classifier.classify_with_ai()
+                         （同发件人只调一次，缓存在 _ai_cache）
+    │
+    │ 返回按发件人归组的待退订列表
+    ▼
+classifier.categorize_groups()
+    │ 按域名归类（电商/新闻/社交…）
+    │ 未知域名 → ai_classifier.categorize_with_ai()
+    │         （同域名只调一次，缓存在 domain_cat_cache）
+    ▼
+main._last_scan 缓存结果（交互菜单复用）
     ▼
 unsubscriber.execute_unsubscribe()
     │
@@ -63,7 +73,7 @@ unsubscriber.execute_unsubscribe()
     └─ 方式3: 解析 HTML 正文，提取退订链接，发 GET 请求
     │
     ▼
-打印结果 + 写入日志文件
+database 写入历史 · 打印结果 · 写入日志文件
 ```
 
 ---
@@ -100,6 +110,24 @@ unsubscriber.execute_unsubscribe()
 
 所以优先级：RFC 8058 POST → List-Unsubscribe HTTP → List-Unsubscribe mailto → 正文链接。
 
+### 为什么支持 MiniMax 和 Anthropic 两种 AI 提供商？
+
+MiniMax 是国内服务，费用更低、延迟更稳定，作为默认选项。Anthropic Claude 质量高，适合对判断准确度有更高要求的场景。两者都走 Anthropic Messages API 格式，代码只需切换 base_url 和 api_key，接入成本极低（`ai_classifier.py:_call_ai()` 一个分发点）。
+
+MiniMax 的 M 系列是推理模型，响应可能只返回 `ThinkingBlock` 而没有独立的 `TextBlock`，因此 `_extract_text_from_response()` 做了 fallback：先找 `text`，找不到再从 `thinking` 里用正则抠 JSON。
+
+### 为什么 AI 判定要按「发件人 + 域名」双层缓存？
+
+同一个广告发件人可能有上百封邮件，每封都问一次 AI 既慢又费钱。第一层 `_ai_cache` 按 `sender_email` 缓存"这个发件人是不是广告"；第二层 `domain_cat_cache` 按 `sender_domain` 缓存"这个域名属于什么类别"。实测 1 万封邮件通常只触发几十到几百次 AI 调用，绝大多数走缓存。缓存只在进程内存里（一次运行有效），下次运行重新算，避免误判被永久固化。
+
+### 为什么扫描用 3 线程并发、而不是更多？
+
+Gmail API 单用户并发有隐性上限，超过会触发 429 限流。3 线程配合每请求 0.15 秒间隔，约 20 req/s，是实测"又快又稳"的平衡点。每个线程维护自己的 `Gmail service` 对象（`thread_local`），避免线程间共享带来的 SSL/连接池问题。拉取 metadata 失败会自动重试（429、500、503、SSL、网络错误），在代理不稳的环境下也能跑完大规模扫描。
+
+### 为什么扫描结果要缓存到 `_last_scan`？
+
+交互菜单场景下，用户常常是"先扫一眼 → 决定退订"两步操作。如果每步都重新扫描（尤其是 14000+ 封历史邮件），体验会崩溃。`main._last_scan` 在一次运行里保留上次扫描的分类结果，退订时默认复用，用户也可以主动重扫。命令行模式（`scan` / `unsubscribe` 各自独立）仍保持原来的行为，互不干扰。
+
 ### 为什么设计试运行（dry-run）模式？
 
 防止手误。就像在真正删除数据库之前先运行 `SELECT` 查一查，试运行让用户先看到「如果执行，会发生什么」，确认没问题再真正动手。对于不熟悉技术的用户尤其重要——先用 `--dry-run` 看看结果，觉得合理了再用 `--confirm` 执行。
@@ -114,17 +142,21 @@ unsubscriber.execute_unsubscribe()
 
 ```
 main.py
- ├── auth.py          (get_gmail_service)
- ├── scanner.py       (scan_emails)
- │    └── auth.py     (service 参数传入，不直接依赖)
- ├── classifier.py    (classify_emails, should_unsubscribe)
- │    └── config.py   (WHITELIST_DOMAINS, AD_KEYWORDS, SENSITIVE_KEYWORDS)
- ├── unsubscriber.py  (execute_unsubscribe)
+ ├── auth.py            (get_gmail_service)
+ ├── scanner.py         (scan_emails)
+ │    ├── auth.py       (每线程获取独立 service)
+ │    └── database.py   (过滤已退订发件人)
+ ├── classifier.py      (classify_emails, categorize_groups)
+ │    ├── config.py     (白名单/关键词/域名分类表)
+ │    └── ai_classifier.py (classify_with_ai, categorize_with_ai)
+ │                      └── config.py (AI 提供商 & Key)
+ ├── unsubscriber.py    (execute_unsubscribe)
  │    └── (requests, beautifulsoup4 - 第三方库)
- └── config.py        (whitelist 命令直接操作)
+ ├── database.py        (SQLite: 已退订 + 历史记录)
+ └── config.py          (whitelist 命令直接操作)
 ```
 
-所有模块均无循环依赖，`config.py` 是最底层（不依赖其他本地模块）。
+所有模块均无循环依赖。`config.py` 是最底层（不依赖其他本地模块），`ai_classifier.py` 和 `database.py` 都只依赖 `config`，可独立测试。
 
 ---
 
@@ -137,4 +169,6 @@ main.py
 | 广告链接追踪 | 使用 List-Unsubscribe 头部而非正文链接（优先） |
 | 账号凭据泄露 | credentials.json 在 .gitignore 中，不上传 git |
 | 误操作 | --dry-run 模式 + --confirm 逐个确认模式 |
-| 速率限制 | scanner 和 unsubscriber 均有请求间隔和重试机制 |
+| 速率限制 | scanner 和 unsubscriber 均有请求间隔和重试机制（429/500/503/SSL/网络错误指数退避） |
+| AI API Key 泄露 | 只通过环境变量读取（`MINIMAX_API_KEY` / `ANTHROPIC_API_KEY`），不写入代码 |
+| AI 接口泄露邮件内容 | 只发送发件人、主题、摘要片段，不发送邮件正文 |

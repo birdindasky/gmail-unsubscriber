@@ -325,17 +325,23 @@ def format_category_summary(categorized: dict) -> list[str]:
 #  交互式菜单
 # ────────────────────────────────────────────────────────────────
 
+_last_scan = {"categorized": None, "to_unsub": None, "total": 0, "days": 0}
+
+
 def interactive_menu() -> None:
     """交互式主菜单入口。"""
     setup_logging()
     database.init_db()
 
     while True:
+        has_scan = _last_scan["categorized"] is not None
+        scan_hint = " ✅" if has_scan else ""
+
         print()
         print("╔══════════════════════════════════╗")
         print("║      Gmail 邮件退订工具 📬       ║")
         print("╠══════════════════════════════════╣")
-        print("║  1. 扫描邮件                     ║")
+        print(f"║  1. 扫描邮件{scan_hint}                {'  ' if has_scan else '   '}║")
         print("║  2. 执行退订                     ║")
         print("║  3. 查看退订历史                 ║")
         print("║  4. 管理白名单                   ║")
@@ -412,14 +418,20 @@ def _interactive_scan() -> None:
     categorized, to_unsub, total = _do_scan_and_classify(days, scan_all, use_ai)
 
     if not categorized:
+        _last_scan["categorized"] = None
         return
+
+    _last_scan["categorized"] = categorized
+    _last_scan["to_unsub"] = to_unsub
+    _last_scan["total"] = total
+    _last_scan["days"] = days
 
     _display_categories(categorized)
 
     total_senders = sum(len(g) for g in categorized.values())
     total_emails = sum(g["count"] for groups in categorized.values() for g in groups)
     print(f"  共 {total_senders} 个发件人建议退订，{total_emails} 封邮件")
-    print(f"\n  运行选项 2「执行退订」可按类别退订。")
+    print(f"\n  选择 2「执行退订」可直接用本次扫描结果退订。")
 
     database.record_scan(
         days=days, total_emails=total,
@@ -428,15 +440,28 @@ def _interactive_scan() -> None:
 
 
 def _interactive_unsubscribe() -> None:
-    """交互式退订（按类别）。"""
-    days, scan_all, use_ai = _ask_scan_params()
+    """交互式退订（按类别），优先使用上次扫描结果。"""
+    if _last_scan["categorized"]:
+        print("\n  检测到上次扫描结果，是否直接使用？")
+        reuse = input("  1=使用上次结果（默认） 2=重新扫描 > ").strip()
+        if reuse != "2":
+            categorized = _last_scan["categorized"]
+            to_unsub = _last_scan["to_unsub"]
+            total = _last_scan["total"]
+            days = _last_scan["days"]
+        else:
+            days, scan_all, use_ai = _ask_scan_params()
+            categorized, to_unsub, total = _do_scan_and_classify(days, scan_all, use_ai)
+            if not categorized:
+                return
+    else:
+        days, scan_all, use_ai = _ask_scan_params()
+        categorized, to_unsub, total = _do_scan_and_classify(days, scan_all, use_ai)
+        if not categorized:
+            return
 
     archive_choice = input("  退订后归档旧邮件？ 1=否（默认） 2=是 > ").strip()
     archive = archive_choice == "2"
-
-    categorized, to_unsub, total = _do_scan_and_classify(days, scan_all, use_ai)
-    if not categorized:
-        return
 
     service = auth.get_gmail_service()
     cat_keys = list(categorized.keys())

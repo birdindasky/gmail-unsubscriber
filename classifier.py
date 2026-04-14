@@ -124,6 +124,9 @@ def is_advertisement(email_data: dict) -> tuple[bool, list[str]]:
 #  最终决策
 # ────────────────────────────────────────────────────────────────
 
+_ai_cache: dict[str, tuple[bool, str]] = {}
+
+
 def should_unsubscribe(email_data: dict, use_ai: bool = True) -> tuple[bool, str]:
     """
     综合所有规则，给出是否应该退订的最终判断。
@@ -151,13 +154,17 @@ def should_unsubscribe(email_data: dict, use_ai: bool = True) -> tuple[bool, str
     if is_ad:
         return True, "命中广告特征：" + "；".join(conditions)
 
-    # 恰好命中 1 个条件 → 交给 AI 判断
+    # 恰好命中 1 个条件 → 交给 AI 判断（同一发件人只调一次）
     if len(conditions) == 1 and use_ai:
-        ai_result, ai_reason = ai_classifier.classify_with_ai(
-            sender=email_data.get("sender", ""),
-            subject=email_data.get("subject", ""),
-            snippet=email_data.get("snippet", ""),
-        )
+        if sender_email in _ai_cache:
+            ai_result, ai_reason = _ai_cache[sender_email]
+        else:
+            ai_result, ai_reason = ai_classifier.classify_with_ai(
+                sender=email_data.get("sender", ""),
+                subject=email_data.get("subject", ""),
+                snippet=email_data.get("snippet", ""),
+            )
+            _ai_cache[sender_email] = (ai_result, ai_reason)
         if ai_result:
             return True, f"AI 判定为广告：{ai_reason}（辅助条件：{conditions[0]}）"
 
@@ -180,8 +187,12 @@ def classify_emails(emails: list[dict], use_ai: bool = True) -> dict:
         dict: {"to_unsubscribe": [...], "skipped": int}
     """
     sender_groups: dict[str, dict] = {}
+    total = len(emails)
+    print(f"\n🔍 正在分类 {total} 封邮件...")
 
-    for em in emails:
+    for idx, em in enumerate(emails, 1):
+        if idx % 50 == 0 or idx == total:
+            print(f"   分类进度：{idx}/{total} 封...")
         sender_email = em.get("sender_email", "unknown")
         decision, reason = should_unsubscribe(em, use_ai=use_ai)
 
@@ -243,8 +254,11 @@ def categorize_groups(groups: list[dict], use_ai: bool = True) -> dict[str, list
         dict: {类别名: [发件人分组列表]}，只包含非空类别
     """
     categorized: dict[str, list[dict]] = {}
+    total = len(groups)
+    ai_count = 0
+    domain_cat_cache: dict[str, str] = {}
 
-    for group in groups:
+    for i, group in enumerate(groups, 1):
         domain = group.get("sender_domain", "")
         category = config.DOMAIN_TO_CATEGORY.get(domain)
 
@@ -255,9 +269,15 @@ def categorize_groups(groups: list[dict], use_ai: bool = True) -> dict[str, list
                     break
 
         if not category and use_ai:
-            sender = group.get("sender", "")
-            subject = group["sample_subjects"][0] if group.get("sample_subjects") else ""
-            category = ai_classifier.categorize_with_ai(sender, subject)
+            if domain in domain_cat_cache:
+                category = domain_cat_cache[domain]
+            else:
+                ai_count += 1
+                print(f"   🤖 AI 分类中 ({ai_count})：{domain}...")
+                sender = group.get("sender", "")
+                subject = group["sample_subjects"][0] if group.get("sample_subjects") else ""
+                category = ai_classifier.categorize_with_ai(sender, subject)
+                domain_cat_cache[domain] = category
 
         if not category:
             category = "其他"

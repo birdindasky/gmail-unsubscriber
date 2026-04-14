@@ -1,6 +1,6 @@
-# Gmail 智能退订器 · 详细使用说明
+# Gmail 智能退订器 · 使用手册
 
-> 一个帮您自动清理 Gmail 广告邮件订阅的工具。安全、可靠、有记忆。
+> 帮您自动清理 Gmail 广告邮件订阅的工具。安全、可靠、有记忆。
 
 ---
 
@@ -8,11 +8,11 @@
 
 1. [这个工具能做什么](#1-这个工具能做什么)
 2. [首次配置（只需做一次）](#2-首次配置只需做一次)
-3. [日常使用流程](#3-日常使用流程)
-4. [所有命令详解](#4-所有命令详解)
-5. [Claude AI 辅助判断](#5-claude-ai-辅助判断)
+3. [理解两个核心命令](#3-理解两个核心命令)
+4. [推荐工作流程](#4-推荐工作流程)
+5. [所有命令详解](#5-所有命令详解)
 6. [白名单管理](#6-白名单管理)
-7. [查看历史记录](#7-查看历史记录)
+7. [其他命令](#7-其他命令)
 8. [常见问题](#8-常见问题)
 9. [安全说明](#9-安全说明)
 
@@ -20,99 +20,170 @@
 
 ## 1. 这个工具能做什么
 
-- **扫描**：自动分析 Gmail 中最近的广告/促销邮件
-- **退订**：用三种方式尝试退订（一键 POST、发退订邮件、点退订链接）
-- **标记**：退订成功后在 Gmail 里打上「已退订」标签，一目了然
-- **归档**：可选择把旧的广告邮件从收件箱移走（不删除）
+- **扫描**：自动分析 Gmail 中的广告/促销邮件，列出建议退订的发件人
+- **退订**：自动向对方发送退订请求（三种方式依次尝试）
+- **标记**：退订成功后在 Gmail 里打上「已退订」标签
+- **归档**：可选择把退订成功的旧广告邮件从收件箱移走（不删除）
 - **记忆**：记住退订过的发件人，下次不会重复处理
-- **AI 辅助**：遇到模棱两可的邮件，可以请 Claude AI 帮忙判断
+- **AI 辅助**：遇到模棱两可的邮件，由 AI 帮忙判断（支持 MiniMax / Anthropic Claude）
 
 **绝对不会做的事：**
 - 不会删除任何邮件
 - 不会碰白名单里的发件人（银行、Google、政府等）
-- 不会在没有您确认的情况下自动退订
 
 ---
 
 ## 2. 首次配置（只需做一次）
 
+> **跨平台说明**：本工具是纯 Python 程序，**Mac / Linux / Windows / WSL2 都可以跑**。文档命令默认是 Mac/Linux 写法，Windows 原生用户请看下方「Windows 用户适配」小节。
+
 ### 第一步：安装依赖
 
 ```bash
-cd /Users/bossoffice/gmail-unsubscriber
+cd /path/to/gmail-unsubscriber   # 改成项目实际路径
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 第二步：获取 Google API 凭证
+> 每次打开新的终端窗口，都需要重新运行 `source venv/bin/activate` 激活环境（命令行前面会显示 `(venv)`）。
 
-这一步让程序能读取您的 Gmail。操作步骤：
+#### 🪟 Windows 用户适配
+
+Windows 原生（PowerShell / CMD）和 Mac 的命令稍有不同：
+
+| 操作 | Mac / Linux / WSL2 | Windows 原生 |
+|------|-------------------|-------------|
+| 激活虚拟环境 | `source venv/bin/activate` | `venv\Scripts\activate` |
+| 设置环境变量（临时） | `export KEY=value` | `set KEY=value` （CMD）<br>`$env:KEY="value"` （PowerShell） |
+| 设置环境变量（永久） | 写入 `~/.zshrc` 或 `~/.bashrc` | 系统属性 → 环境变量，或 PowerShell 的 `$PROFILE` |
+| 文件路径分隔符 | `/` | `\`（Python 代码内两者都支持，命令行用 `\`）|
+
+其余命令（`python3 main.py ...`）完全相同。如果您装的是 Python 3.x 官方版，命令可能是 `python` 而不是 `python3`，按实际情况替换即可。
+
+#### 🐧 WSL2 用户（推荐 Windows 用户使用）
+
+WSL2（Windows Subsystem for Linux 2）本质是 Windows 里跑的 Ubuntu，**命令和 Mac/Linux 完全一致**，不用记两套语法。推荐 Windows 用户用这种方式，体验最接近 Mac。
+
+在 WSL2 里一次性初始化：
+
+```bash
+# 进入 WSL2 终端后
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip
+cd ~                             # 或其他您想放项目的目录
+git clone <本项目仓库地址> gmail-unsubscriber
+cd gmail-unsubscriber
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+**WSL2 下 OAuth 浏览器授权的小坑**：WSL2 没有图形界面，首次授权时程序会打印一个 `http://localhost:xxxxx/?code=...` 链接。把这个链接复制到 Windows 的浏览器里打开，完成授权即可。现代 WSL2（Windows 11 + 最新版）已支持自动唤起 Windows 浏览器，大多数情况下会直接弹出来。
+
+**WSL2 下的文件路径**：项目最好放在 WSL2 的文件系统里（如 `~/gmail-unsubscriber`），**不要放在 `/mnt/c/...`**（Windows 盘挂载路径），否则 Python 读写性能会断崖下降。
+
+### 第二步：获取 Google API 凭证
 
 1. 打开 [Google Cloud Console](https://console.cloud.google.com/)
 2. 创建一个新项目（名字随意，如 "Gmail Unsubscriber"）
-3. 左侧菜单 → **API 和服务** → **启用 API 和服务**
-4. 搜索 **Gmail API** → 启用
-5. 左侧菜单 → **凭据** → **创建凭据** → **OAuth 客户端 ID**
-6. 应用类型选 **桌面应用**
-7. 点击下载，将文件重命名为 `credentials.json`
-8. 将 `credentials.json` 放入 `/Users/bossoffice/gmail-unsubscriber/` 目录
+3. 左侧菜单 → **API 和服务** → **启用 API 和服务** → 搜索并启用 **Gmail API**
+4. 左侧菜单 → **凭据** → **创建凭据** → **OAuth 客户端 ID**
+5. 应用类型选 **桌面应用**，点击下载
+6. 将下载的文件重命名为 `credentials.json`，放入项目根目录
 
-### 第三步：首次授权
-
-```bash
-python main.py scan --days 7
+```
+gmail-unsubscriber/
+├── credentials.json   ← 放这里
+├── main.py
+└── ...
 ```
 
-首次运行会弹出浏览器，请登录您的 Gmail 账号并点击「允许」。授权只需做一次，之后会自动记住。
+> ⚠️ `credentials.json` 是访问 Google 服务的凭据，切勿上传到 GitHub 或分享给他人。该文件已被加入 `.gitignore`。
+
+### 第三步：首次 OAuth 授权
+
+首次运行任何命令时，程序会自动打开浏览器要求授权：
+
+```bash
+python3 main.py scan
+```
+
+1. 在浏览器中选择您的 Google 账号
+2. 看到"此应用未经 Google 验证"警告时：点击 **高级** → **前往（不安全）**
+3. 勾选所有权限，点击 **继续**
+4. 浏览器显示授权完成后，回到终端即可
+
+**授权只需做一次**，之后自动使用保存的 `token.json`。
 
 ---
 
-## 3. 日常使用流程
+## 3. 理解两个核心命令
 
-**推荐的标准流程（五步走）：**
+这是理解本工具的关键：
+
+| 命令 | 做什么 | 适合什么时候用 |
+|------|--------|---------------|
+| `scan` | **只扫描，不退订**。列出建议退订的发件人供您查看 | 想先看看有哪些广告发件人，再决定是否退订 |
+| `unsubscribe` | **扫描 + 退订**。内部会先做一次扫描，然后执行退订 | 想直接退订时 |
+
+**命令行模式**：`scan` 和 `unsubscribe` 各自独立运行扫描，互不影响。`scan` 的价值在于让您**提前预览**，方便您先把不想退订的域名加入白名单，再执行 `unsubscribe`。
+
+**交互菜单模式**（`python3 main.py` 不带参数）：扫描结果会在本次运行中**自动缓存**。在菜单里先选 1 扫描，再选 2 退订时，程序会直接使用上次扫描的结果，不用重新扫一遍；也可以选择重新扫。菜单里「扫描邮件」旁显示 ✅ 表示已有缓存。
+
+---
+
+## 4. 推荐工作流程
+
+### 首次深度清理（建议按顺序执行）
 
 ```bash
-# 激活虚拟环境（每次打开终端后需要运行一次）
+# 第一步：激活虚拟环境
 source venv/bin/activate
 
-# 第一步：扫描，看看有哪些广告发件人
-python main.py scan
+# 第二步：扫描，看看有哪些广告发件人
+# （--days 0 表示扫全部历史邮件，--all 表示扫所有分类而非只扫促销标签）
+python3 main.py scan --days 0 --all
 
-# 第二步：如果扫描结果里有重要联系人，把他们加白名单
-python main.py whitelist add 某公司.com
+# 第三步：如果扫描结果里有不想退订的发件人，把他们的域名加白名单
+python3 main.py whitelist add 某公司.com
 
-# 第三步：试运行，预览将要执行的操作（安全，不会真的退订）
-python main.py unsubscribe --dry-run
+# 第四步：试运行退订，确认程序打算怎么做（不会真的发送退订请求）
+python3 main.py unsubscribe --dry-run --days 0 --all
 
-# 第四步：确认没问题后，逐个确认执行退订
-python main.py unsubscribe --confirm
+# 第五步：确认没问题后，正式执行退订（逐个询问您）
+python3 main.py unsubscribe --confirm --days 0 --all
+```
 
-# 第五步：隔几天再扫一次，看看效果
-python main.py scan
+### 日常维护（每月一次，快速扫最近 30 天）
+
+```bash
+source venv/bin/activate
+python3 main.py unsubscribe --confirm --days 30
 ```
 
 ---
 
-## 4. 所有命令详解
+## 5. 所有命令详解
 
-### `scan` — 扫描邮件
+### `scan` — 扫描邮件（只看，不退订）
 
 ```bash
-python main.py scan [选项]
+python3 main.py scan [选项]
 ```
 
-| 选项 | 说明 | 示例 |
-|------|------|------|
-| `--days N` | 扫描最近 N 天（默认 30） | `--days 60` |
-| `--all` | 扫描全部邮件（默认只扫促销标签） | `--all` |
-| `--no-ai` | 不使用 AI 辅助判断 | `--no-ai` |
+| 选项 | 说明 | 默认值 |
+|------|------|--------|
+| `--days N` | 扫描最近 N 天；`0` 表示不限时间扫全部历史 | 30 天 |
+| `--all` | 扫描全部分类（默认只扫 Gmail 的促销标签） | 关闭 |
+| `--no-ai` | 不使用 Claude AI 辅助判断，只用关键词规则 | 开启 AI |
 
 **示例：**
 ```bash
-python main.py scan                    # 扫描最近 30 天的促销邮件
-python main.py scan --days 90 --all   # 扫描最近 3 个月的全部邮件
-python main.py scan --no-ai           # 只用关键词判断，不调用 AI
+python3 main.py scan                          # 扫描最近 30 天的促销邮件
+python3 main.py scan --days 90               # 扫描最近 3 个月的促销邮件
+python3 main.py scan --days 0 --all          # 扫描全部历史邮件的全部分类
+python3 main.py scan --no-ai                 # 不调用 AI，纯规则判断
 ```
 
 ---
@@ -120,139 +191,48 @@ python main.py scan --no-ai           # 只用关键词判断，不调用 AI
 ### `unsubscribe` — 执行退订
 
 ```bash
-python main.py unsubscribe --dry-run | --confirm [选项]
+python3 main.py unsubscribe (--dry-run | --confirm) [选项]
 ```
 
-**必须选一个模式（二选一）：**
+**必须二选一的模式：**
 
 | 模式 | 说明 |
 |------|------|
-| `--dry-run` | 试运行，只展示会退订什么，不实际执行 |
-| `--confirm` | 实际执行，默认逐个询问您 |
+| `--dry-run` | 试运行：只展示会退订什么，**不实际发送退订请求** |
+| `--confirm` | 执行退订：默认逐个询问您是否确认 |
 
 **可选参数：**
 
-| 选项 | 说明 |
-|------|------|
-| `--auto` | 配合 `--confirm` 使用，自动确认所有退订（不逐个询问） |
-| `--archive` | 退订成功后，把该发件人的旧邮件从收件箱移到归档 |
-| `--days N` | 扫描最近 N 天（默认 30） |
-| `--all` | 扫描全部邮件 |
-| `--no-ai` | 不使用 AI |
+| 选项 | 说明 | 默认值 |
+|------|------|--------|
+| `--auto` | 配合 `--confirm` 使用，自动确认所有退订（不逐个询问） | 关闭 |
+| `--archive` | 退订成功后，把该发件人的旧邮件从收件箱移到归档 | 关闭 |
+| `--days N` | 扫描最近 N 天；`0` 表示不限时间扫全部历史 | 30 天 |
+| `--all` | 扫描全部分类（默认只扫促销标签） | 关闭 |
+| `--no-ai` | 不使用 AI 辅助判断 | 开启 AI |
 
 **示例：**
 ```bash
-# 试运行（最安全，先看看会发生什么）
-python main.py unsubscribe --dry-run
+# 试运行，看看程序打算退订哪些（最安全，推荐第一次使用时运行）
+python3 main.py unsubscribe --dry-run
 
-# 逐个确认执行（推荐）
-python main.py unsubscribe --confirm
+# 逐个确认执行退订（推荐日常使用）
+python3 main.py unsubscribe --confirm
 
-# 全自动执行（不询问，直接全部退订）
-python main.py unsubscribe --confirm --auto
+# 自动退订所有建议发件人（不逐个询问）
+python3 main.py unsubscribe --confirm --auto
 
-# 退订 + 归档旧邮件（收件箱会变干净）
-python main.py unsubscribe --confirm --archive
+# 退订 + 顺手把旧广告邮件从收件箱移走
+python3 main.py unsubscribe --confirm --archive
 
-# 扫描最近 60 天，逐个确认，退订后归档
-python main.py unsubscribe --days 60 --confirm --archive
+# 扫全部历史邮件，逐个确认，退订后归档
+python3 main.py unsubscribe --confirm --archive --days 0 --all
 ```
 
-**逐个确认时的操作说明：**
-- 输入 `y` 或回车 → 退订这个发件人
-- 输入 `n` → 跳过，不退订
-- 输入 `q` → 立即停止，不再处理后续发件人
-
----
-
-### `history` — 查看退订历史
-
-```bash
-python main.py history [--limit N]
-```
-
-查看所有退订过的发件人记录，包括时间、退订方式、是否成功。
-
-```bash
-python main.py history             # 显示最近 50 条记录
-python main.py history --limit 20  # 只显示最近 20 条
-```
-
----
-
-### `whitelist` — 管理白名单
-
-```bash
-python main.py whitelist add <域名>   # 添加域名到白名单
-python main.py whitelist list         # 查看白名单
-```
-
-**示例：**
-```bash
-# 把公司邮件域名加入白名单（不会被退订）
-python main.py whitelist add mycompany.com
-
-# 查看当前白名单
-python main.py whitelist list
-```
-
-**内置白名单已包含（无需手动添加）：**
-- 银行：工商银行、招商银行、PayPal 等
-- 科技公司：Google、Apple、Microsoft、GitHub 等
-- 中国平台：淘宝、京东、163 邮箱等
-- 政府机构：gov.cn 等
-- 教育机构：.edu 结尾的域名
-
----
-
-### `logs` — 查看运行日志
-
-```bash
-python main.py logs
-```
-
-显示最新日志文件的最后 50 行，用于排查问题。
-
----
-
-## 5. Claude AI 辅助判断
-
-### 工作原理
-
-当一封邮件的广告特征**恰好命中 1 个条件**（不够确定是广告），程序会把邮件的发件人、主题、摘要发给 Claude AI 判断。AI 只回答"是广告/不是广告"，不会接触邮件正文。
-
-### 配置 API Key
-
-有两种方式配置：
-
-**方式一：修改 config.py（永久生效）**
-```python
-ANTHROPIC_API_KEY = "sk-ant-xxxxxxxxxxxx"
-```
-
-**方式二：环境变量（推荐，更安全）**
-```bash
-export ANTHROPIC_API_KEY="sk-ant-xxxxxxxxxxxx"
-python main.py scan
-```
-
-如果没有配置 API Key，AI 判断会自动跳过，不影响基本功能。
-
-### 关闭 AI
-
-```bash
-python main.py scan --no-ai           # 本次扫描不用 AI
-python main.py unsubscribe --no-ai    # 本次退订不用 AI
-```
-
-或者在 `config.py` 中永久关闭：
-```python
-USE_AI_CLASSIFIER = False
-```
-
-### 费用参考
-
-使用的是 Claude Haiku 模型，速度快且便宜。1000 封模糊邮件的 AI 判断费用约 **$0.01 美元**（约 0.07 元人民币）。大多数情况下，只有少数邮件会触发 AI 判断。
+**逐个确认时的按键说明：**
+- `y` 或直接回车 → 退订这个发件人
+- `n` → 跳过，不退订
+- `q` → 立即停止，退出程序
 
 ---
 
@@ -260,97 +240,156 @@ USE_AI_CLASSIFIER = False
 
 白名单分两层：
 
-1. **内置白名单**：银行、Google、政府等，写死在代码里，不会误退订
-2. **用户自定义白名单**：您自己添加的域名，存在本地数据库里
+- **内置白名单**：银行、Google、Apple、政府、教育机构等，已写入代码，永远不会被退订
+- **用户自定义白名单**：您自己添加的域名，存在本地数据库
 
 ```bash
-# 添加白名单
-python main.py whitelist add mycompany.com    # 公司邮件
-python main.py whitelist add newsletter.com  # 您想保留的订阅
+# 查看白名单（含内置类别和您自己添加的）
+python3 main.py whitelist list
 
-# 查看白名单
-python main.py whitelist list
+# 添加域名到白名单
+python3 main.py whitelist add mycompany.com
+python3 main.py whitelist add newsletter-i-like.com
 ```
 
-**什么时候需要手动添加白名单？**
-- 公司内部系统发的通知邮件
-- 您真心想收到的某个 newsletter
-- 扫描结果里出现了不该退订的发件人
+**内置白名单已覆盖的类别（无需手动添加）：**
+- 银行 & 金融：工商银行、招商银行、PayPal、Alipay 等
+- 科技公司：Google、Apple、Microsoft、GitHub 等
+- 中国平台：淘宝、京东、163 邮箱等
+- 政府机构：gov.cn 等
+- 教育机构：.edu、edu.cn、coursera.org 等
 
 ---
 
-## 7. 查看历史记录
+## 7. 其他命令
+
+### `history` — 查看退订历史
 
 ```bash
-python main.py history
-```
-
-输出示例：
-```
-📋 退订历史记录（共 15 条，最近 50 条）
-────────────────────────────────────────────────────────────
-  [1] 某购物平台 <newsletter@shop.example.com>
-      邮箱：newsletter@shop.example.com
-      时间：2026-04-11 09:30  方式：一键退订（POST）  ✅
-
-  [2] 广告邮件 <promo@ads.example.com>
-      邮箱：promo@ads.example.com
-      时间：2026-04-11 09:31  方式：退订邮件发送  ✅
-
-  [3] 某服务通知
-      邮箱：info@service.example.com
-      时间：2026-04-11 09:32  方式：退订失败  ❌
+python3 main.py history             # 显示最近 50 条退订记录
+python3 main.py history --limit 20  # 只显示最近 20 条
 ```
 
 已退订的发件人**下次扫描不会再出现**，无需担心重复处理。
+
+### `logs` — 查看运行日志
+
+```bash
+python3 main.py logs
+```
+
+显示最新日志文件的最后 50 行，排查问题时使用。
+
+### `--verbose` — 输出详细调试信息
+
+```bash
+python3 main.py --verbose scan
+python3 main.py --verbose unsubscribe --confirm
+```
+
+`--verbose` 需要放在命令名称前面（紧跟 `main.py` 之后）。
 
 ---
 
 ## 8. 常见问题
 
-**Q：程序说"未发现需要退订的广告邮件"，但我明明有很多广告邮件？**
+**Q：扫不到广告邮件，但我明明有很多？**
 
 A：可能原因：
-1. 这些广告邮件比较老，超出了扫描天数。试试 `--days 90` 扫更多天
-2. Gmail 没有把这些邮件分到促销标签，试试加 `--all` 参数扫全部邮件
-3. 这些发件人在白名单里。用 `python main.py whitelist list` 查看
+1. 邮件超出了默认 30 天范围 → 试试 `--days 90` 或 `--days 0`（全部历史）
+2. Gmail 把这些邮件归到了促销标签以外的分类 → 加上 `--all` 参数
+3. 发件人在白名单里 → 运行 `python3 main.py whitelist list` 查看
 
-**Q：退订成功了，但邮件还在收件箱里？**
+**Q：退订成功了，但旧邮件还在收件箱？**
 
-A：这是正常的。退订只是告诉对方"别再发了"，不会删除已有邮件。如果想清理旧邮件，下次退订时加 `--archive` 参数，会把旧邮件移到 Gmail 归档。
+A：这是正常的。退订只告诉对方"别再发了"，不会动已有邮件。如需清理旧邮件，退订时加上 `--archive` 参数。
 
-**Q：退订失败是什么意思？**
+**Q：退订失败怎么办？**
 
-A：对方的退订系统没有响应或返回了错误。这种情况下您需要手动打开邮件，点击邮件底部的「退订」链接。
+A：对方的退订系统没有响应。此时请手动打开邮件，点击邮件底部的退订链接。
 
 **Q：担心误退订重要邮件怎么办？**
 
-A：有三道保护：
-1. 内置白名单（银行、Google 等绝对不会被退订）
-2. 敏感词检测（含验证码、订单、账单的邮件跳过）
-3. 先用 `--dry-run` 看一遍，确认没问题再用 `--confirm` 执行
+A：三道保险：① 内置白名单（银行、Google 等绝对跳过）② 敏感词检测（含验证码、订单、账单的邮件跳过）③ 先用 `--dry-run` 预览确认。
 
-**Q：想取消之前的退订怎么办？**
+**Q：credentials.json / token.json 是什么？**
 
-A：本工具不支持重新订阅（每个网站的重新订阅方式不同）。需要的话，请直接访问对方网站手动重新订阅。
+A：`credentials.json` 是 Google 颁发给本应用的"身份证"。`token.json` 是您授权后保存的"通行令牌"。两个文件都只存在本地，已加入 `.gitignore`。删除 `token.json` 后，下次运行会重新弹出浏览器授权。
 
-**Q：credentials.json 怎么获取？**
+**Q：AI 辅助判断会产生费用吗？**
 
-A：参考本文档第 2 节「首次配置」的步骤，从 Google Cloud Console 下载。
+A：会，但极低。默认使用 MiniMax（国内模型，费用低）；可切换到 Anthropic Claude。配合程序内置的**同发件人只调一次**缓存，通常 1 万封邮件只会触发几十到几百次 AI 调用。大多数邮件走本地规则判断，不花钱。没有配置 API Key 时 AI 判断自动跳过，不影响基本功能。
+
+**Q：可以用于多个 Gmail 账号吗？**
+
+A：目前一个项目目录对应一个账号。多账号请复制多份项目目录，分别完成授权。
 
 ---
 
-## 9. 安全说明
+## 9. AI 辅助判断（可选）
+
+### 两种 AI 提供商
+
+工具支持两种 AI 提供商，二选一即可。作用是：
+- 邮件只命中 1 条广告条件、规则犹豫时，让 AI 拍板
+- 给未知域名的发件人自动归类（电商 / 新闻 / 社交 …）
+
+#### 方案 A：MiniMax（默认，国内模型）
+
+```bash
+export MINIMAX_API_KEY="你的MiniMax API Key"
+python3 main.py scan
+```
+
+#### 方案 B：Anthropic Claude
+
+```bash
+export AI_PROVIDER=anthropic
+export ANTHROPIC_API_KEY="sk-ant-xxxxxxxxxxxx"
+python3 main.py scan
+```
+
+永久生效推荐写入 `~/.zshrc`（Mac 默认 shell 配置文件）：
+
+```bash
+echo 'export MINIMAX_API_KEY="你的Key"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### AI 调用会被缓存
+
+- **按发件人缓存**：同一个发件人邮箱，AI 只会被问一次，后续同发件人的邮件直接复用结果
+- **按域名缓存**：归类阶段，同一个域名（如 `shop.com`）也只问一次
+- 缓存只在本次运行内有效，重新启动程序后重新计算
+
+### 关闭 AI
+
+```bash
+python3 main.py scan --no-ai              # 本次不用 AI
+python3 main.py unsubscribe --no-ai ...   # 本次不用 AI
+```
+
+或者在 `config.py` 中永久关闭：
+```python
+USE_AI_CLASSIFIER = False
+```
+
+### 查看当前配置
+
+交互菜单运行 `python3 main.py` → 选 5「设置」即可查看当前启用的 AI 提供商和 Key 状态。
+
+---
+
+## 10. 安全说明
 
 | 内容 | 保护措施 |
 |------|---------|
-| Google 账号 | 使用 OAuth 2.0，程序拿到的是临时授权令牌，不是您的密码 |
-| 授权令牌 | 保存在 `token.json`，已加入 .gitignore，不会上传到 git |
-| API 凭证 | `credentials.json` 已加入 .gitignore，不会上传到 git |
-| Anthropic API Key | 建议用环境变量设置，不要写进代码文件 |
-| 数据库文件 | `gmail-unsubscriber.db` 已加入 .gitignore，只在本地 |
-| 邮件内容 | AI 判断只发送发件人+主题+摘要，不发送邮件正文 |
-| 退订操作 | 不删除任何邮件，只发退订请求 |
+| Google 账号密码 | 程序**永远不接触**您的密码，使用 OAuth 2.0 临时令牌 |
+| OAuth 令牌 | 保存在 `token.json`，已加入 .gitignore，不会上传 git |
+| API 凭证 | `credentials.json` 已加入 .gitignore，不会上传 git |
+| AI API Key（MiniMax / Anthropic）| 建议用环境变量，不要写进代码文件 |
+| 邮件内容 | AI 判断只发送发件人 + 主题 + 摘要，不发送邮件正文 |
+| 退订操作 | 只发退订请求，**不删除任何邮件** |
 
-**随时撤销授权的方法：**
-访问 [Google 账号安全设置](https://myaccount.google.com/permissions)，找到您的 OAuth 应用，点击撤销即可。
+**随时撤销授权：**
+访问 [Google 账号安全设置](https://myaccount.google.com/permissions)，找到本应用，点击撤销即可。
