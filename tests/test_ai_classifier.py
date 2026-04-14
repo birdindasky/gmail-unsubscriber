@@ -237,3 +237,49 @@ def test_categorize_with_ai_error_returns_other():
         category = ai_classifier.categorize_with_ai("x@y.com", "test")
 
     assert category == "其他"
+
+
+def test_call_ai_routes_openai_protocol():
+    """选 DeepSeek（openai 协议）时应调用 _call_openai。"""
+    import ai_classifier
+    with patch("ai_classifier.user_config") as mock_uc, \
+         patch("ai_classifier._call_openai", return_value='{"is_ad": true, "reason": "t"}') as mock_oai, \
+         patch("ai_classifier._call_anthropic") as mock_anthropic, \
+         patch("ai_classifier.config") as mock_config:
+        mock_config.USE_AI_CLASSIFIER = True
+        mock_uc.get_active_provider.return_value = {
+            "id": "deepseek", "api_key": "sk-x", "model": "deepseek-chat", "base_url": None,
+        }
+        is_ad, _ = ai_classifier.classify_with_ai("s", "subj", "snip")
+    assert is_ad is True
+    assert mock_oai.called
+    assert not mock_anthropic.called
+
+
+def test_call_ai_routes_anthropic_protocol():
+    """选 MiniMax（anthropic 协议）时应调用 _call_anthropic。"""
+    import ai_classifier
+    with patch("ai_classifier.user_config") as mock_uc, \
+         patch("ai_classifier._call_anthropic", return_value='{"is_ad": false, "reason": "t"}') as mock_anthropic, \
+         patch("ai_classifier._call_openai") as mock_oai, \
+         patch("ai_classifier.config") as mock_config:
+        mock_config.USE_AI_CLASSIFIER = True
+        mock_uc.get_active_provider.return_value = {
+            "id": "minimax", "api_key": "sk-cp-x", "model": "MiniMax-M2", "base_url": None,
+        }
+        is_ad, _ = ai_classifier.classify_with_ai("s", "subj", "snip")
+    assert is_ad is False
+    assert mock_anthropic.called
+    assert not mock_oai.called
+
+
+def test_no_provider_skips_ai():
+    """未配置提供商时直接返回 False，不调 AI。"""
+    import ai_classifier
+    with patch("ai_classifier.user_config") as mock_uc, \
+         patch("ai_classifier.config") as mock_config:
+        mock_config.USE_AI_CLASSIFIER = True
+        mock_uc.get_active_provider.return_value = None
+        is_ad, reason = ai_classifier.classify_with_ai("s", "subj", "snip")
+    assert is_ad is False
+    assert "未配置" in reason or "跳过" in reason

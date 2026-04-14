@@ -12,6 +12,7 @@ import os
 import re
 
 import config
+import user_config
 
 logger = logging.getLogger(__name__)
 
@@ -86,20 +87,8 @@ PROVIDERS = {
 }
 
 
-def _get_anthropic_client():
-    import anthropic
-    api_key = config.ANTHROPIC_API_KEY or os.environ.get("ANTHROPIC_API_KEY", "")
-    return anthropic.Anthropic(api_key=api_key)
-
-
-def _get_minimax_client():
-    import anthropic
-    api_key = config.MINIMAX_API_KEY or os.environ.get("MINIMAX_API_KEY", "")
-    return anthropic.Anthropic(api_key=api_key, base_url=config.MINIMAX_BASE_URL)
-
-
 def _extract_text_from_response(message) -> str:
-    """从 AI 响应中提取文本，兼容推理模型只返回 ThinkingBlock 的情况。"""
+    """从 Anthropic SDK 响应中提取文本，兼容推理模型只返回 ThinkingBlock 的情况。"""
     for block in message.content:
         if getattr(block, "type", "") == "text" and hasattr(block, "text"):
             return block.text.strip()
@@ -109,32 +98,48 @@ def _extract_text_from_response(message) -> str:
     return ""
 
 
-def _call_anthropic(prompt: str) -> str:
-    client = _get_client()
+def _call_anthropic(prompt: str, provider: dict) -> str:
+    import anthropic
+    kwargs = {"api_key": provider["api_key"]}
+    if provider.get("base_url"):
+        kwargs["base_url"] = provider["base_url"]
+    client = anthropic.Anthropic(**kwargs)
     message = client.messages.create(
-        model=config.AI_MODEL,
-        max_tokens=config.AI_MAX_TOKENS,
+        model=provider["model"],
+        max_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
     return _extract_text_from_response(message)
 
 
-def _call_minimax(prompt: str) -> str:
-    client = _get_minimax_client()
-    message = client.messages.create(
-        model=config.MINIMAX_MODEL,
-        max_tokens=max(config.AI_MAX_TOKENS, 1024),
+def _call_openai(prompt: str, provider: dict) -> str:
+    import openai
+    kwargs = {"api_key": provider["api_key"]}
+    if provider.get("base_url"):
+        kwargs["base_url"] = provider["base_url"]
+    client = openai.OpenAI(**kwargs)
+    resp = client.chat.completions.create(
+        model=provider["model"],
+        max_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
-    return _extract_text_from_response(message)
+    return resp.choices[0].message.content.strip() if resp.choices else ""
 
 
 def _call_ai(prompt: str) -> str:
-    provider = getattr(config, "AI_PROVIDER", "anthropic")
-    if provider == "minimax":
-        return _call_minimax(prompt)
+    """按活跃提供商的 protocol 分发调用。"""
+    provider = user_config.get_active_provider()
+    if not provider:
+        raise RuntimeError("未配置 AI 提供商")
+    meta = PROVIDERS.get(provider["id"])
+    if not meta:
+        raise ValueError(f"未知提供商：{provider['id']}")
+    if meta["protocol"] == "openai":
+        return _call_openai(prompt, provider)
+    elif meta["protocol"] == "anthropic":
+        return _call_anthropic(prompt, provider)
     else:
-        return _call_anthropic(prompt)
+        raise ValueError(f"未知协议：{meta['protocol']}")
 
 
 def _parse_json_response(text: str) -> dict:
@@ -157,19 +162,10 @@ def _parse_json_response(text: str) -> dict:
 def _check_ai_available() -> tuple[bool, str]:
     if not config.USE_AI_CLASSIFIER:
         return False, "AI 分类已关闭"
-    provider = getattr(config, "AI_PROVIDER", "anthropic")
-    if provider == "minimax":
-        api_key = config.MINIMAX_API_KEY or os.environ.get("MINIMAX_API_KEY", "")
-    else:
-        api_key = config.ANTHROPIC_API_KEY or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        logger.warning(f"未配置 {provider} API Key，跳过 AI 分类")
-        return False, f"未配置 API Key，跳过 AI 分类"
+    provider = user_config.get_active_provider()
+    if not provider:
+        return False, "未配置 AI 提供商，跳过 AI 分类"
     return True, ""
-
-
-# 保留旧函数名用于向后兼容
-_get_client = _get_anthropic_client
 
 
 def classify_with_ai(sender: str, subject: str, snippet: str) -> tuple[bool, str]:
