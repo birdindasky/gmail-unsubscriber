@@ -166,28 +166,12 @@ def add_to_user_whitelist(domain: str) -> bool:
 #  AI 分类配置
 # ────────────────────────────────────────────────────────────────
 
-# 是否启用 Claude AI 辅助分类（关键词命中 1 条时触发）
+# 是否启用 AI 辅助分类（关键词命中 1 条时触发）
+# 提供商 / API Key / 模型等存储在 user_config.json，由交互式设置菜单管理
 USE_AI_CLASSIFIER = True
-
-# Anthropic API Key（也可通过环境变量 ANTHROPIC_API_KEY 设置）
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-
-# 使用的 Claude 模型（haiku 最快最便宜）
-AI_MODEL = "claude-haiku-4-5-20251001"
 
 # AI 回复的最大 token 数（只需简短 JSON）
 AI_MAX_TOKENS = 150
-
-# ────────────────────────────────────────────────────────────────
-#  MiniMax AI 配置
-# ────────────────────────────────────────────────────────────────
-
-MINIMAX_API_KEY = os.environ.get("MINIMAX_API_KEY", "")
-MINIMAX_MODEL = "MiniMax-M2.7"
-MINIMAX_BASE_URL = "https://api.minimaxi.com/anthropic"
-
-# AI 提供商选择："minimax" 或 "anthropic"
-AI_PROVIDER = os.environ.get("AI_PROVIDER", "minimax")
 
 # ────────────────────────────────────────────────────────────────
 #  邮件类别定义 & 域名映射

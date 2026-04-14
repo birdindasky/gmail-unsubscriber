@@ -575,19 +575,19 @@ def _interactive_whitelist() -> None:
 
 def _interactive_settings() -> None:
     """交互式设置。"""
+    import user_config
+    active = user_config.get_active_provider()
     print("\n── 当前设置 ──")
-    provider = getattr(config, "AI_PROVIDER", "anthropic")
-    print(f"  AI 模型：{provider}")
-    if provider == "minimax":
-        key = config.MINIMAX_API_KEY
-        print(f"  MiniMax API Key：{'已配置' if key else '❌ 未配置（设置环境变量 MINIMAX_API_KEY）'}")
+    if active:
+        masked = user_config.mask_key(active["api_key"])
+        print(f"  AI 提供商：{active['id']}")
+        print(f"  模型：{active['model']}")
+        print(f"  API Key：{masked}")
     else:
-        key = config.ANTHROPIC_API_KEY
-        print(f"  Anthropic API Key：{'已配置' if key else '❌ 未配置（设置环境变量 ANTHROPIC_API_KEY）'}")
+        print("  AI 提供商：❌ 未配置")
     print(f"  AI 辅助分类：{'开启' if config.USE_AI_CLASSIFIER else '关闭'}")
     print()
-    print("  提示：修改 AI 提供商请设置环境变量 AI_PROVIDER=minimax 或 AI_PROVIDER=anthropic")
-    print("  提示：API Key 请设置环境变量 MINIMAX_API_KEY 或 ANTHROPIC_API_KEY")
+    print("  提示：完整的 AI 提供商配置菜单将在后续版本开放。")
 
 
 # ────────────────────────────────────────────────────────────────
