@@ -18,10 +18,8 @@
 | `SUSPICIOUS_SENDER_KEYWORDS` | `list[str]` | 可疑发件人关键词（noreply/newsletter 等） |
 | `DOMAIN_TO_CATEGORY` | `dict[str, str]` | 域名到邮件类别的映射表（用于归类展示） |
 | `CATEGORY_NAMES` | `list[str]` | 所有可用类别（电商购物/社交/新闻…） |
-| `AI_PROVIDER` | `str` | `"minimax"` 或 `"anthropic"`，默认 `"minimax"` |
-| `MINIMAX_API_KEY` / `ANTHROPIC_API_KEY` | `str` | 分别对应两种 AI 的 Key（优先从环境变量读取） |
-| `MINIMAX_BASE_URL` / `MINIMAX_MODEL` | `str` | MiniMax 的 Anthropic 兼容端点和模型名 |
-| `USE_AI_CLASSIFIER` | `bool` | AI 辅助判断总开关 |
+| `USE_AI_CLASSIFIER` | `bool` | AI 辅助判断总开关（AI 提供商选择与 Key 已移至 `user_config.json`） |
+| `AI_MAX_TOKENS` | `int` | AI 调用最大 token 数限制 |
 
 **关键函数：**
 
@@ -197,27 +195,51 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 ---
 
-## `ai_classifier.py` — AI 辅助判定
+## `user_config.py` — 用户配置持久化
 
-**职责：** 封装 AI 调用细节，对外提供「判断是不是广告」和「判断属于什么类别」两个能力。对 `classifier.py` 屏蔽 AI 提供商差异：上层只管问问题，底层自动走 MiniMax 或 Anthropic。就像一个统一的翻译官——不管您雇的是中国翻译还是外国翻译，跟您对话的接口是一样的。
-
-**两种 AI 提供商：**
-
-| 提供商 | 启用方式 | 说明 |
-|--------|---------|------|
-| MiniMax（默认） | `AI_PROVIDER=minimax` + `MINIMAX_API_KEY` | 国内服务，费用低；走 Anthropic Messages 兼容端点 |
-| Anthropic Claude | `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` | 质量高，需海外网络 |
+**职责：** 用户配置持久化模块。存储 AI 提供商选择 + API Key 到 `user_config.json`。提供 `load/save/get_active_provider/set_active_provider/mask_key/migrate_from_env`。
 
 **关键函数：**
 
 | 函数名 | 说明 |
 |--------|------|
+| `load()` | 从 `user_config.json` 加载配置，文件不存在时返回空默认值 |
+| `save(config)` | 将配置写入 `user_config.json` |
+| `get_active_provider()` | 返回当前激活的提供商 ID 及其配置 dict |
+| `set_active_provider(provider_id, api_key, model, base_url)` | 更新活跃提供商并保存 |
+| `mask_key(key)` | 脱敏展示 API Key（前 6 位 + `****` + 后 6 位） |
+| `migrate_from_env()` | 从旧环境变量（`MINIMAX_API_KEY` / `ANTHROPIC_API_KEY` / `AI_PROVIDER`）迁移到 `user_config.json`，已迁移则跳过 |
+
+**被哪些模块调用：**
+- `main.py` 启动时调用 `migrate_from_env()`
+- `main._configure_ai_provider()` / `_show_current_ai_config()` 调用 `set_active_provider()` / `get_active_provider()` / `mask_key()`
+- `ai_classifier._check_ai_available()` / `_call_ai()` 读取活跃提供商配置
+
+**依赖：**
+- 标准库：`json`、`os`
+- 不依赖任何其他本地模块（最底层）
+
+---
+
+## `ai_classifier.py` — AI 辅助判定
+
+**职责：** 封装 AI 调用细节，对外提供「判断是不是广告」和「判断属于什么类别」两个能力。内置 `PROVIDERS` 注册表（9 个提供商），按协议（`openai` / `anthropic`）分发请求，对 `classifier.py` 屏蔽提供商差异。
+
+**`PROVIDERS` 注册表（9 个提供商）：**
+
+openai、anthropic、minimax、deepseek、moonshot、qwen、zhipu、ollama、custom。每条记录含协议类型、默认模型、base_url（可选）。
+
+**关键函数：**
+
+| 函数名 | 说明 |
+|--------|------|
+| `test_connection(provider_id, api_key, model, base_url)` | 发送最小 prompt 探测凭据是否可用，返回 `(success, message)` |
 | `classify_with_ai(sender, subject, snippet)` | 判断邮件是不是广告，返回 `(is_ad, reason)` |
 | `categorize_with_ai(sender, subject)` | 判断发件人属于哪个类别，返回类别名 |
-| `_call_ai(prompt)` | 按 `AI_PROVIDER` 分发到 MiniMax / Anthropic（内部函数） |
+| `_call_ai(prompt)` | 按活跃提供商协议分发到 OpenAI SDK / Anthropic SDK（内部函数） |
 | `_extract_text_from_response(message)` | 从响应中抠文本，兼容推理模型只返回 `ThinkingBlock` 的情况（内部函数） |
 | `_parse_json_response(text)` | 容错解析 JSON，支持从思考内容的夹缝中用正则找 JSON（内部函数） |
-| `_check_ai_available()` | 检查 AI 是否可用（总开关 + API Key）（内部函数） |
+| `_check_ai_available()` | 检查 AI 是否可用（总开关 + 活跃提供商配置）（内部函数） |
 
 **关键细节：**
 - **ThinkingBlock 兼容**：MiniMax M 系列是推理模型，响应可能只有 `ThinkingBlock` 没有 `TextBlock`，`_extract_text_from_response` 会 fallback 到 `thinking` 字段
@@ -227,10 +249,12 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 **被哪些模块调用：**
 - `classifier.should_unsubscribe()` 在 1 条件命中时调用 `classify_with_ai()`
 - `classifier.categorize_groups()` 对未知域名调用 `categorize_with_ai()`
+- `main._configure_ai_provider()` 调用 `test_connection()` 验证凭据
 
 **依赖：**
 - `anthropic`（Python SDK，同时兼容 MiniMax 的 Anthropic 端点）
-- 本地模块：`config`（读取 AI_PROVIDER 和 API Key）
+- `openai`（Python SDK，用于 OpenAI 兼容提供商）
+- 本地模块：`config`（`USE_AI_CLASSIFIER` / `AI_MAX_TOKENS`）、`user_config`（活跃提供商 & Key）
 - 标准库：`json`、`logging`、`os`、`re`
 
 ---
@@ -348,7 +372,9 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 2. 执行退订       → _interactive_unsubscribe()（复用上次扫描结果）
 3. 查看退订历史   → _interactive_history()
 4. 管理白名单     → _interactive_whitelist()
-5. 设置           → _interactive_settings()（查看 AI 状态等）
+5. 设置           → _interactive_settings()
+   ├── 1. 配置 AI 提供商  → _configure_ai_provider()（选提供商 → 填 Key → test_connection → 保存）
+   └── 2. 查看当前配置    → _show_current_ai_config()（Key 脱敏展示）
 0. 退出
 ```
 
@@ -372,6 +398,8 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 - 控制台日志：仅显示 WARNING 及以上（除非 `--verbose`）
 - 这样设计的原因：用户只需看到关键信息，详细调试信息写入文件备查
 
+**启动时行为：** `main()` 在任何命令执行前调用 `user_config.migrate_from_env()`，将旧环境变量配置无感迁移到 `user_config.json`。
+
 **依赖：**
-- 本地模块：`auth`、`scanner`、`classifier`、`unsubscriber`、`config`、`database`（全部）
+- 本地模块：`auth`、`scanner`、`classifier`、`unsubscriber`、`config`、`database`、`user_config`（全部）
 - 标准库：`argparse`、`logging`、`os`、`sys`、`datetime`

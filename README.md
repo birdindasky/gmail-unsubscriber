@@ -54,12 +54,16 @@ python3 main.py unsubscribe --confirm --auto      # 自动退订全部
 
 ## 🤖 AI 支持
 
-支持两种 AI 提供商辅助判断模糊邮件、给发件人自动归类：
+支持 8 家主流 AI 提供商 + 自定义兜底，通过菜单交互式配置（无需改环境变量）：
 
-- **MiniMax**（默认）：`export MINIMAX_API_KEY="你的Key"`
-- **Anthropic Claude**：`export AI_PROVIDER=anthropic` + `export ANTHROPIC_API_KEY="你的Key"`
+**直接运行 → 菜单 → 5. 设置 → 1. 配置 AI 提供商**，30 秒搞定。
 
-同一发件人只调用一次 AI（结果会缓存到运行结束），节省费用。未配置 Key 时自动跳过 AI，不影响基本功能。
+内置支持：**OpenAI、Anthropic Claude、MiniMax、DeepSeek、Moonshot(Kimi)、通义千问、智谱 GLM、Ollama**，以及任何 OpenAI 兼容接口（自定义入口）。
+
+- 配置保存在 `user_config.json`（已加入 `.gitignore`）
+- 同一发件人只调用一次 AI（结果缓存到运行结束），节省费用
+- 首次启动会自动从环境变量迁移老配置，无感升级
+- 未配置 AI 时自动跳过，不影响基本功能
 
 ## 📖 文档
 

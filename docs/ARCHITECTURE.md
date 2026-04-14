@@ -26,14 +26,14 @@
    │        │            ▼                │              │
    │        │   ┌─────────────────┐       │              │
    │        │   │ ai_classifier.py│       │              │
-   │        │   │ MiniMax / Claude│       │              │
+   │        │   │ 9 提供商注册表  │       │              │
    │        │   │ 2 层缓存防重复  │       │              │
    │        │   └────────┬────────┘       │              │
    │        │            │                │              │
    │        ▼            ▼                ▼              │
    │     ┌─────────────────────────────────────┐         │
    └────▶│           config.py                 │◀────────┘
-         │ 白名单/关键词/AI 提供商开关/域名分类 │
+         │ 白名单/关键词/域名分类/USE_AI_CLASSIFIER │
          └─────────────────────────────────────┘
 ```
 
@@ -110,9 +110,11 @@ database 写入历史 · 打印结果 · 写入日志文件
 
 所以优先级：RFC 8058 POST → List-Unsubscribe HTTP → List-Unsubscribe mailto → 正文链接。
 
-### 为什么支持 MiniMax 和 Anthropic 两种 AI 提供商？
+### 为什么支持 9 个 AI 提供商？
 
-MiniMax 是国内服务，费用更低、延迟更稳定，作为默认选项。Anthropic Claude 质量高，适合对判断准确度有更高要求的场景。两者都走 Anthropic Messages API 格式，代码只需切换 base_url 和 api_key，接入成本极低（`ai_classifier.py:_call_ai()` 一个分发点）。
+不同用户有不同需求：国内用户希望低延迟低费用（MiniMax、DeepSeek、通义千问、智谱、Moonshot），有海外网络的用户可以选 OpenAI 或 Anthropic Claude，本地部署用户可以用 Ollama，还有自定义入口兜底任何 OpenAI 兼容服务。`ai_classifier.py` 里维护一个 `PROVIDERS` 注册表（9 条目），每条记录协议类型（`openai` 或 `anthropic`）、默认模型、base_url 等；`_call_ai()` 按协议分发到对应 SDK，接入新提供商只需在注册表加一行。
+
+AI 提供商选择和 API Key 不再放 `config.py` / 环境变量，改为存入 `user_config.json`（由 `user_config.py` 管理，已加入 `.gitignore`），通过交互菜单配置，首次启动会自动从旧环境变量迁移。
 
 MiniMax 的 M 系列是推理模型，响应可能只返回 `ThinkingBlock` 而没有独立的 `TextBlock`，因此 `_extract_text_from_response()` 做了 fallback：先找 `text`，找不到再从 `thinking` 里用正则抠 JSON。
 
@@ -148,15 +150,17 @@ main.py
  │    └── database.py   (过滤已退订发件人)
  ├── classifier.py      (classify_emails, categorize_groups)
  │    ├── config.py     (白名单/关键词/域名分类表)
- │    └── ai_classifier.py (classify_with_ai, categorize_with_ai)
- │                      └── config.py (AI 提供商 & Key)
+ │    └── ai_classifier.py (classify_with_ai, categorize_with_ai; PROVIDERS 注册表)
+ │                      ├── config.py     (USE_AI_CLASSIFIER / AI_MAX_TOKENS)
+ │                      └── user_config.py (活跃提供商 & API Key)
  ├── unsubscriber.py    (execute_unsubscribe)
  │    └── (requests, beautifulsoup4 - 第三方库)
  ├── database.py        (SQLite: 已退订 + 历史记录)
- └── config.py          (whitelist 命令直接操作)
+ ├── config.py          (whitelist 命令直接操作)
+ └── user_config.py     (启动时 migrate_from_env；_interactive_settings 写入配置)
 ```
 
-所有模块均无循环依赖。`config.py` 是最底层（不依赖其他本地模块），`ai_classifier.py` 和 `database.py` 都只依赖 `config`，可独立测试。
+所有模块均无循环依赖。`config.py` 和 `user_config.py` 是最底层（不依赖其他本地模块），`ai_classifier.py` 和 `database.py` 都只依赖它们，可独立测试。
 
 ---
 
@@ -170,5 +174,5 @@ main.py
 | 账号凭据泄露 | credentials.json 在 .gitignore 中，不上传 git |
 | 误操作 | --dry-run 模式 + --confirm 逐个确认模式 |
 | 速率限制 | scanner 和 unsubscriber 均有请求间隔和重试机制（429/500/503/SSL/网络错误指数退避） |
-| AI API Key 泄露 | 只通过环境变量读取（`MINIMAX_API_KEY` / `ANTHROPIC_API_KEY`），不写入代码 |
+| AI API Key 泄露 | 存入 `user_config.json`（已加入 `.gitignore`），不写入代码；展示时脱敏（前6位+后6位） |
 | AI 接口泄露邮件内容 | 只发送发件人、主题、摘要片段，不发送邮件正文 |

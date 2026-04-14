@@ -74,22 +74,23 @@ python3 main.py logs
 
 ## AI 模型配置
 
-工具支持两种 AI 提供商，用于辅助判断模糊邮件和自动分类发件人类别：
-
-### MiniMax（默认）
+通过交互菜单配置即可，无需改环境变量：
 
 ```bash
-export MINIMAX_API_KEY="你的MiniMax API Key"
+python3 main.py
+# → 选 5. 设置
+# → 选 1. 配置 AI 提供商
+# → 选择提供商（1-9）
+# → 粘贴 API Key
+# → 自动测试连接
+# → ✅ 保存
 ```
 
-### Anthropic Claude
+**支持的提供商：** OpenAI、Anthropic Claude、MiniMax、DeepSeek、Moonshot、通义千问、智谱 GLM、Ollama（本地），以及任何 OpenAI 兼容服务（自定义入口）。
 
-```bash
-export AI_PROVIDER=anthropic
-export ANTHROPIC_API_KEY="你的Anthropic API Key"
-```
+配置保存在项目根目录的 `user_config.json`（加入 `.gitignore`，不会上传 git）。
 
-永久生效建议写入 `~/.zshrc`。交互菜单「5. 设置」可查看当前 AI 配置状态。
+**老用户无感迁移**：如果您之前通过环境变量配置过 MiniMax / Anthropic，首次运行新版本会自动迁移，不需要重新填。
 
 **AI 调用是缓存的**：同一个发件人邮箱只会调用一次 AI，结果在本次运行内复用，避免对同一域名的 100 封邮件做 100 次 AI 请求。
 
