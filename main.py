@@ -804,6 +804,10 @@ def build_parser() -> argparse.ArgumentParser:
 # ────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    import user_config
+    if user_config.migrate_from_env():
+        print("✅ 已把环境变量中的 AI 配置迁移到 user_config.json")
+
     if len(sys.argv) == 1:
         try:
             interactive_menu()
