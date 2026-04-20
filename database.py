@@ -4,6 +4,7 @@
 管理三张表：退订历史、扫描记录、用户白名单
 """
 
+import os
 import sqlite3
 import logging
 from datetime import datetime
@@ -48,6 +49,11 @@ def init_db() -> None:
     """)
     conn.commit()
     conn.close()
+    # 确保数据库文件权限为 0o600（包含扫描历史等 PII）
+    try:
+        os.chmod(config.DB_PATH, 0o600)
+    except OSError:
+        pass
     logger.debug("数据库初始化完成")
 
 
