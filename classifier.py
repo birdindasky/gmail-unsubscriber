@@ -46,11 +46,9 @@ def is_whitelisted(sender: str) -> bool:
 
     for white_domain in all_whitelist:
         white_domain = white_domain.lower().strip()
-        if domain == white_domain:
-            return True
-        if domain.endswith("." + white_domain):
-            return True
-        if "." not in white_domain and domain.endswith("." + white_domain):
+        if not white_domain:
+            continue
+        if domain == white_domain or domain.endswith("." + white_domain):
             return True
 
     return False

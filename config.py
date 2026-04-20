@@ -43,14 +43,13 @@ WHITELIST_DOMAINS = [
     "nih.gov", "cdc.gov", "who.int", "nhc.gov.cn",
 
     # 教育
-    "edu", "edu.cn", "coursera.org", "edx.org", "khanacademy.org",
+    "edu.cn", "coursera.org", "edx.org", "khanacademy.org",
     "mit.edu", "stanford.edu", "harvard.edu",
 
     # 公共事业 & 新加坡电信
     "electricity.com", "water.com", "gas.com",
     "state.gov", "unitedstates.gov",
     "singtel.com", "starhub.com", "m1.com", "m1.com.sg",
-    "utility", "telecom",
 ]
 
 # ────────────────────────────────────────────────────────────────

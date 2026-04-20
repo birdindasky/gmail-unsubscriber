@@ -6,6 +6,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import classifier
+import config
 
 
 def _make_email(sender_email, subject, labels=None, list_unsub=None, snippet=""):
@@ -160,3 +161,23 @@ def test_categorize_groups_with_ai():
     mock_ai.assert_called_once_with("Mystery Shop", "Buy now")
     assert "电商购物" in result
     assert len(result["电商购物"]) == 1
+
+
+def test_is_whitelisted_exact_match(monkeypatch):
+    monkeypatch.setattr(config, "get_all_whitelist_domains", lambda: ["google.com"])
+    assert classifier.is_whitelisted("alice@google.com") is True
+
+
+def test_is_whitelisted_subdomain(monkeypatch):
+    monkeypatch.setattr(config, "get_all_whitelist_domains", lambda: ["google.com"])
+    assert classifier.is_whitelisted("alice@mail.google.com") is True
+
+
+def test_is_whitelisted_not_a_match(monkeypatch):
+    monkeypatch.setattr(config, "get_all_whitelist_domains", lambda: ["google.com"])
+    assert classifier.is_whitelisted("alice@evilgoogle.com") is False
+
+
+def test_is_whitelisted_angle_brackets(monkeypatch):
+    monkeypatch.setattr(config, "get_all_whitelist_domains", lambda: ["google.com"])
+    assert classifier.is_whitelisted("<alice@google.com>") is True
