@@ -55,6 +55,12 @@ def authenticate() -> Credentials:
         print(f"   将文件放置于：{CREDENTIALS_FILE}")
         sys.exit(1)
 
+    # 兜底：凭据文件若权限过宽则收紧为 0o600（不影响 Google 的使用）
+    try:
+        os.chmod(CREDENTIALS_FILE, 0o600)
+    except OSError:
+        pass
+
     creds = None
 
     # 尝试从缓存文件加载令牌
@@ -96,10 +102,17 @@ def authenticate() -> Credentials:
                 print(f"\n❌ 授权失败：{e}")
                 sys.exit(1)
 
-        # 保存令牌到文件，下次免登录
+        # 保存令牌到文件，下次免登录（权限 600，避免其他用户读取刷新令牌）
         try:
-            with open(TOKEN_FILE, "w") as f:
+            fd = os.open(
+                TOKEN_FILE,
+                os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                0o600,
+            )
+            with os.fdopen(fd, "w") as f:
                 f.write(creds.to_json())
+            # 兜底：若文件已存在，os.open 不会改权限，显式修正一次
+            os.chmod(TOKEN_FILE, 0o600)
             logger.debug(f"令牌已保存到 {TOKEN_FILE}")
         except IOError as e:
             logger.warning(f"保存令牌失败（不影响本次使用）：{e}")
