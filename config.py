@@ -4,7 +4,6 @@
 所有可自定义的参数集中在这里，方便用户调整而不需要改动核心逻辑。
 """
 
-import json
 import os
 
 # ────────────────────────────────────────────────────────────────
@@ -115,51 +114,14 @@ SUSPICIOUS_SENDER_KEYWORDS = [
 #  运行时配置（运行时可动态修改白名单）
 # ────────────────────────────────────────────────────────────────
 
-# 用户自定义白名单（存储在本地 JSON 文件中）
-USER_WHITELIST_FILE = os.path.join(os.path.dirname(__file__), "user_whitelist.json")
-
-
-def load_user_whitelist() -> list[str]:
-    """加载用户自定义白名单。"""
-    if not os.path.exists(USER_WHITELIST_FILE):
-        return []
-    try:
-        with open(USER_WHITELIST_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data.get("domains", [])
-    except (json.JSONDecodeError, KeyError):
-        return []
-
-
-def save_user_whitelist(domains: list[str]) -> None:
-    """保存用户自定义白名单到本地文件。"""
-    with open(USER_WHITELIST_FILE, "w", encoding="utf-8") as f:
-        json.dump({"domains": domains}, f, ensure_ascii=False, indent=2)
-
-
 def get_all_whitelist_domains() -> list[str]:
-    """返回内置白名单 + 用户自定义白名单（从 SQLite 读取）的合集。"""
+    """返回内置白名单 + 用户自定义白名单（SQLite）的合集。"""
+    import database
     try:
-        import database
         user_domains = database.get_user_whitelist()
     except Exception:
-        # 数据库未初始化时回退到 JSON 文件
-        user_domains = load_user_whitelist()
+        user_domains = []
     return list(set(WHITELIST_DOMAINS + user_domains))
-
-
-def add_to_user_whitelist(domain: str) -> bool:
-    """
-    将域名加入用户白名单。
-    返回 True 表示新增成功，False 表示已存在。
-    """
-    current = load_user_whitelist()
-    domain = domain.lower().strip()
-    if domain in current or domain in WHITELIST_DOMAINS:
-        return False
-    current.append(domain)
-    save_user_whitelist(current)
-    return True
 
 
 # ────────────────────────────────────────────────────────────────
