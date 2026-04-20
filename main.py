@@ -623,7 +623,6 @@ def _unsubscribe_groups(groups: list[dict], service, archive: bool) -> tuple[int
 
 def _interactive_history() -> None:
     """交互式查看退订历史。"""
-    import argparse
     args = argparse.Namespace(limit=50)
     cmd_history(args)
 
@@ -637,13 +636,11 @@ def _interactive_whitelist() -> None:
     choice = input("\n> ").strip()
 
     if choice == "1":
-        import argparse
         args = argparse.Namespace(whitelist_action="list", func=cmd_whitelist)
         cmd_whitelist(args)
     elif choice == "2":
         domain = input("  请输入要添加的域名（如 example.com）> ").strip()
         if domain:
-            import argparse
             args = argparse.Namespace(whitelist_action="add", domain=domain, func=cmd_whitelist)
             cmd_whitelist(args)
     elif choice == "0":

@@ -151,13 +151,10 @@ def _extract_sender_tokens(sender_display: str, sender_domain: str) -> set[str]:
     """将发件人名称和域名切成词元，避免 brand 名称里的子串误判。"""
     raw = f"{sender_display} {sender_domain}".lower()
     parts = re.findall(r"[\w\u4e00-\u9fff]+", raw)
-    tokens = set(parts)
-
-    expanded = set()
+    expanded = set(parts)
     for part in parts:
-        expanded.add(part)
         expanded.update(p for p in re.split(r"[_\-.]+", part) if p)
-    return tokens | expanded
+    return expanded
 
 
 # ────────────────────────────────────────────────────────────────
