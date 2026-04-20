@@ -102,3 +102,43 @@ def test_dry_run_fetches_html_when_sample_html_missing():
     assert result["success"] is True
     assert result["details"]["available_methods"]
     assert "正文退订链接" in result["details"]["available_methods"][0]
+
+
+def test_is_safe_http_url_accepts_https():
+    import unsubscriber
+    assert unsubscriber._is_safe_http_url("https://example.com/x") is True
+
+
+def test_is_safe_http_url_accepts_http():
+    import unsubscriber
+    assert unsubscriber._is_safe_http_url("http://example.com/x") is True
+
+
+def test_is_safe_http_url_rejects_javascript():
+    import unsubscriber
+    assert unsubscriber._is_safe_http_url("javascript:alert(1)") is False
+
+
+def test_is_safe_http_url_rejects_file():
+    import unsubscriber
+    assert unsubscriber._is_safe_http_url("file:///etc/passwd") is False
+
+
+def test_is_safe_http_url_rejects_data():
+    import unsubscriber
+    assert unsubscriber._is_safe_http_url("data:text/html,<script>") is False
+
+
+def test_unsubscribe_via_one_click_rejects_javascript():
+    import unsubscriber
+    result = unsubscriber.unsubscribe_via_one_click("javascript:alert(1)")
+    assert result["success"] is False
+    assert "拒绝" in result["message"]
+
+
+def test_unsubscribe_via_link_rejects_javascript_anchor():
+    import unsubscriber
+    html = '<a href="JAVASCRIPT:alert(1)">unsubscribe</a>'
+    result = unsubscriber.unsubscribe_via_link(html)
+    assert result["success"] is False
+    assert "未在邮件正文中找到退订链接" in result["message"] or "拒绝" in result["message"]

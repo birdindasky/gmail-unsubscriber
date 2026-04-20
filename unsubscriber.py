@@ -45,6 +45,16 @@ DEFAULT_HEADERS = {
 
 UNSUBSCRIBE_LABEL_NAME = "已退订"
 
+_ALLOWED_URL_SCHEMES = ("http://", "https://")
+
+
+def _is_safe_http_url(url: str) -> bool:
+    """True only if url is plain http(s). Blocks javascript:, file:, data:, ftp:, etc."""
+    if not isinstance(url, str):
+        return False
+    url = url.strip().lower()
+    return url.startswith(_ALLOWED_URL_SCHEMES)
+
 
 # ────────────────────────────────────────────────────────────────
 #  解析 List-Unsubscribe 头部
@@ -96,6 +106,9 @@ def _parse_mailto(mailto_str: str) -> dict:
 
 def unsubscribe_via_one_click(url: str) -> dict:
     """向 URL 发送 POST 请求，执行 RFC 8058 一键退订。"""
+    if not _is_safe_http_url(url):
+        return {"success": False, "method": "one_click_post",
+                "message": f"拒绝非 http(s) URL：{url[:80]}", "status_code": None}
     logger.info(f"尝试一键退订（POST）：{url}")
     try:
         response = requests.post(
@@ -176,6 +189,11 @@ def unsubscribe_via_link(html_body: str) -> dict:
         return {"success": False, "method": "link_click",
                 "message": "未在邮件正文中找到退订链接", "found_url": None, "status_code": None}
 
+    if not _is_safe_http_url(unsubscribe_url):
+        return {"success": False, "method": "link_click",
+                "message": f"拒绝非 http(s) 链接：{unsubscribe_url[:80]}",
+                "found_url": unsubscribe_url, "status_code": None}
+
     logger.info(f"找到退订链接：{unsubscribe_url[:80]}")
     try:
         response = requests.get(
@@ -250,7 +268,8 @@ def _find_unsubscribe_link(html_body: str) -> Optional[str]:
     candidates = []
     for a_tag in soup.find_all("a", href=True):
         href = a_tag.get("href", "").strip()
-        if not (href.startswith("http://") or href.startswith("https://")):
+        href_lower = href.lower()
+        if not (href_lower.startswith("http://") or href_lower.startswith("https://")):
             continue
         text = a_tag.get_text(strip=True).lower()
         for kw in UNSUBSCRIBE_LINK_KEYWORDS:
@@ -382,25 +401,32 @@ def execute_unsubscribe(
         unsub_info = get_list_unsubscribe_url(list_unsub_raw)
 
         if unsub_info["http_url"]:
-            has_one_click = list_unsub_post and "List-Unsubscribe=One-Click" in list_unsub_post
-            if has_one_click:
-                attempt = unsubscribe_via_one_click(unsub_info["http_url"])
+            if not _is_safe_http_url(unsub_info["http_url"]):
+                attempt = {
+                    "success": False, "method": "http_get",
+                    "message": f"拒绝非 http(s) URL：{unsub_info['http_url'][:80]}",
+                    "status_code": None,
+                }
             else:
-                try:
-                    resp = requests.get(
-                        unsub_info["http_url"], headers=DEFAULT_HEADERS,
-                        timeout=HTTP_TIMEOUT, allow_redirects=True,
-                    )
-                    time.sleep(REQUEST_INTERVAL)
-                    attempt = {
-                        "success": resp.status_code in (200, 201, 202, 204),
-                        "method": "http_get",
-                        "message": f"HTTP GET（状态码 {resp.status_code}）",
-                        "status_code": resp.status_code,
-                    }
-                except Exception as e:
-                    attempt = {"success": False, "method": "http_get",
-                               "message": f"HTTP GET 失败：{e}", "status_code": None}
+                has_one_click = list_unsub_post and "List-Unsubscribe=One-Click" in list_unsub_post
+                if has_one_click:
+                    attempt = unsubscribe_via_one_click(unsub_info["http_url"])
+                else:
+                    try:
+                        resp = requests.get(
+                            unsub_info["http_url"], headers=DEFAULT_HEADERS,
+                            timeout=HTTP_TIMEOUT, allow_redirects=True,
+                        )
+                        time.sleep(REQUEST_INTERVAL)
+                        attempt = {
+                            "success": resp.status_code in (200, 201, 202, 204),
+                            "method": "http_get",
+                            "message": f"HTTP GET（状态码 {resp.status_code}）",
+                            "status_code": resp.status_code,
+                        }
+                    except Exception as e:
+                        attempt = {"success": False, "method": "http_get",
+                                   "message": f"HTTP GET 失败：{e}", "status_code": None}
 
             result["details"]["http"] = attempt
             if attempt["success"]:
