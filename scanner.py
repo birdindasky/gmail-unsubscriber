@@ -62,7 +62,7 @@ def _retry_request(func, *args, **kwargs):
             logger.warning(f"网络连接错误，{wait}s 后重试（第 {attempt+1} 次）：{e}")
             time.sleep(wait)
             last_error = e
-    raise last_error
+    raise last_error if last_error else RuntimeError("重试请求失败但无错误信息")
 
 
 def _get_fetch_settings(total_messages: int) -> tuple[int, float]:
@@ -171,6 +171,7 @@ def _fetch_messages_batch(
     def fetch_one(stub):
         svc = _get_thread_service()
         parsed = None
+        last_retriable_status: Optional[int] = None
         for attempt in range(MAX_RETRIES):
             try:
                 msg = svc.users().messages().get(
@@ -184,6 +185,7 @@ def _fetch_messages_batch(
                 break
             except HttpError as e:
                 if e.resp.status in (429, 500, 503):
+                    last_retriable_status = e.resp.status
                     wait = RETRY_DELAY * (attempt + 1)
                     logger.debug(f"{e.resp.status} 错误，{wait}s 后重试（第 {attempt+1} 次）...")
                     time.sleep(wait)
@@ -191,12 +193,20 @@ def _fetch_messages_batch(
                     logger.warning(f"获取邮件失败（{stub['id']}）：{e}")
                     break
             except (ssl.SSLError, ConnectionError, OSError) as e:
+                last_retriable_status = -1
                 wait = RETRY_DELAY * (attempt + 1)
                 logger.debug(f"网络错误，{wait}s 后重试（第 {attempt+1} 次）：{e}")
                 time.sleep(wait)
             except Exception as e:
                 logger.warning(f"邮件解析失败（{stub['id']}）：{e}")
                 break
+        else:
+            # for-else：未 break 说明所有 attempt 都用光了且最终无结果
+            if parsed is None and last_retriable_status is not None:
+                logger.warning(
+                    f"邮件 {stub['id']} 重试 {MAX_RETRIES} 次仍失败（最后状态 "
+                    f"{last_retriable_status}），已跳过"
+                )
 
         time.sleep(request_sleep)
 

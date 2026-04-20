@@ -186,3 +186,28 @@ def test_scan_all_query_excludes_non_inbox_buckets():
     assert "-in:drafts" in query
     assert "-in:trash" in query
     assert "-in:spam" in query
+
+
+def test_fetch_one_logs_warning_when_retries_exhausted(caplog):
+    """Verify a message whose API call 429s 3 times is reported, not silent."""
+    import logging
+    from googleapiclient.errors import HttpError
+
+    fake_service = MagicMock()
+
+    class _Resp:
+        status = 429
+        reason = "rate"
+
+    err = HttpError(_Resp(), b"rate limited")
+    fake_service.users().messages().get.return_value.execute.side_effect = err
+
+    with patch.object(scanner, "_get_thread_service", return_value=fake_service), \
+         patch.object(scanner.time, "sleep", return_value=None), \
+         caplog.at_level(logging.WARNING, logger="scanner"):
+        result = scanner._fetch_messages_batch(
+            fake_service, [{"id": "abc123"}], workers=1, request_sleep=0
+        )
+
+    assert result == []
+    assert any("abc123" in r.message and "重试" in r.message for r in caplog.records)
