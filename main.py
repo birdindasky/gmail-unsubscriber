@@ -176,7 +176,7 @@ def cmd_scan(args: argparse.Namespace) -> None:
     print(f"\n📊 扫描报告")
     print(f"   总邮件数：{len(emails)}")
     print(f"   建议退订发件人数：{len(to_unsub)}")
-    print(f"   已跳过邮件数（白名单/敏感）：{skipped}")
+    print(f"   未建议退订的邮件数：{skipped}")
     print()
 
     if not to_unsub:
