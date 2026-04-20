@@ -25,7 +25,7 @@
 - **标记**：退订成功后在 Gmail 里打上「已退订」标签
 - **归档**：可选择把退订成功的旧广告邮件从收件箱移走（不删除）
 - **记忆**：记住退订过的发件人，下次不会重复处理
-- **AI 辅助**：遇到模棱两可的邮件，由 AI 帮忙判断（支持 MiniMax / Anthropic Claude）
+- **AI 辅助**：遇到模棱两可的邮件，由 AI 帮忙判断（支持 9 家提供商，通过菜单配置）
 
 **绝对不会做的事：**
 - 不会删除任何邮件
@@ -44,7 +44,10 @@ cd /path/to/gmail-unsubscriber   # 改成项目实际路径
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+pip install -r requirements-dev.txt   # 需要跑测试时再装
 ```
+
+> **Python 版本建议**：请尽量使用 **Python 3.10 或更高版本**。项目在较老版本上可能还能运行，但 Google 相关依赖已经对 Python 3.9 发出停止常规支持提示。
 
 > 每次打开新的终端窗口，都需要重新运行 `source venv/bin/activate` 激活环境（命令行前面会显示 `(venv)`）。
 
@@ -142,18 +145,33 @@ python3 main.py scan
 source venv/bin/activate
 
 # 第二步：扫描，看看有哪些广告发件人
-# （--days 0 表示扫全部历史邮件，--all 表示扫所有分类而非只扫促销标签）
-python3 main.py scan --days 0 --all
+# 先从“全部历史促销邮件”开始，而不是直接扫整个邮箱
+python3 main.py scan --days 0
 
 # 第三步：如果扫描结果里有不想退订的发件人，把他们的域名加白名单
 python3 main.py whitelist add 某公司.com
 
 # 第四步：试运行退订，确认程序打算怎么做（不会真的发送退订请求）
-python3 main.py unsubscribe --dry-run --days 0 --all
+python3 main.py unsubscribe --dry-run --days 0
 
 # 第五步：确认没问题后，正式执行退订（逐个询问您）
-python3 main.py unsubscribe --confirm --days 0 --all
+python3 main.py unsubscribe --confirm --days 0
 ```
+
+### 全邮箱历史排查（先抽样，再决定是否全量）
+
+```bash
+# 先抽样 500 封，确认结果是否靠谱
+python3 main.py scan --days 0 --all --max-messages 500 --no-ai
+
+# 不写 --max-messages 时，程序也会默认保护到前 2000 封
+python3 main.py scan --days 0 --all --no-ai
+
+# 只有在您明确知道自己要扫完整个邮箱时，才使用 --full-scan
+python3 main.py scan --days 0 --all --full-scan --no-ai
+```
+
+> **重要**：`--all` 会把扫描范围从“促销标签”扩大到“全部收到的邮件”（同时默认排除已发送、草稿、垃圾箱、垃圾邮件），速度明显更慢。建议总是先用 `--max-messages` 抽样验证。
 
 ### 日常维护（每月一次，快速扫最近 30 天）
 
@@ -161,6 +179,15 @@ python3 main.py unsubscribe --confirm --days 0 --all
 source venv/bin/activate
 python3 main.py unsubscribe --confirm --days 30
 ```
+
+### 跑测试（建议改动代码后执行）
+
+```bash
+source venv/bin/activate
+python -m pytest
+```
+
+如果提示 `No module named pytest`，通常说明您还没安装测试依赖，或者没有激活项目的 `venv`。
 
 ---
 
@@ -176,15 +203,25 @@ python3 main.py scan [选项]
 |------|------|--------|
 | `--days N` | 扫描最近 N 天；`0` 表示不限时间扫全部历史 | 30 天 |
 | `--all` | 扫描全部分类（默认只扫 Gmail 的促销标签） | 关闭 |
-| `--no-ai` | 不使用 Claude AI 辅助判断，只用关键词规则 | 开启 AI |
+| `--max-messages N` | 最多处理前 N 封邮件，适合大样本抽样验证 | 不限 |
+| `--full-scan` | 在 `--days 0 --all` 下关闭默认保护上限，执行完整扫描 | 关闭 |
+| `--no-ai` | 不使用 AI 辅助判断，只用关键词规则 | 开启 AI |
 
 **示例：**
 ```bash
 python3 main.py scan                          # 扫描最近 30 天的促销邮件
 python3 main.py scan --days 90               # 扫描最近 3 个月的促销邮件
-python3 main.py scan --days 0 --all          # 扫描全部历史邮件的全部分类
+python3 main.py scan --days 0                # 扫描全部历史促销邮件
+python3 main.py scan --days 0 --all          # 扫描全部历史邮件（默认保护到前 2000 封）
+python3 main.py scan --days 0 --all --max-messages 500
+python3 main.py scan --days 0 --all --full-scan
 python3 main.py scan --no-ai                 # 不调用 AI，纯规则判断
 ```
+
+**关于 `--days 0 --all` 的默认保护：**
+- 如果您没有写 `--max-messages`，程序会默认只处理前 `2000` 封邮件
+- 这是为了避免第一次运行时误扫整个邮箱，导致等待时间过长
+- 如果您确实要完整扫描，请显式加 `--full-scan`
 
 ---
 
@@ -209,6 +246,8 @@ python3 main.py unsubscribe (--dry-run | --confirm) [选项]
 | `--archive` | 退订成功后，把该发件人的旧邮件从收件箱移到归档 | 关闭 |
 | `--days N` | 扫描最近 N 天；`0` 表示不限时间扫全部历史 | 30 天 |
 | `--all` | 扫描全部分类（默认只扫促销标签） | 关闭 |
+| `--max-messages N` | 最多处理前 N 封邮件，适合大样本抽样验证 | 不限 |
+| `--full-scan` | 在 `--days 0 --all` 下关闭默认保护上限，执行完整扫描 | 关闭 |
 | `--no-ai` | 不使用 AI 辅助判断 | 开启 AI |
 
 **示例：**
@@ -225,7 +264,10 @@ python3 main.py unsubscribe --confirm --auto
 # 退订 + 顺手把旧广告邮件从收件箱移走
 python3 main.py unsubscribe --confirm --archive
 
-# 扫全部历史邮件，逐个确认，退订后归档
+# 全邮箱先抽样 dry-run，再决定是否完整执行
+python3 main.py unsubscribe --dry-run --days 0 --all --max-messages 500
+
+# 扫全部历史邮件，逐个确认，退订后归档（默认仍受 2000 封保护）
 python3 main.py unsubscribe --confirm --archive --days 0 --all
 ```
 
@@ -298,7 +340,23 @@ python3 main.py --verbose unsubscribe --confirm
 A：可能原因：
 1. 邮件超出了默认 30 天范围 → 试试 `--days 90` 或 `--days 0`（全部历史）
 2. Gmail 把这些邮件归到了促销标签以外的分类 → 加上 `--all` 参数
+3. 如果 `--all` 看起来太慢，先加 `--max-messages 500` 做抽样验证，再决定是否 `--full-scan`
 3. 发件人在白名单里 → 运行 `python3 main.py whitelist list` 查看
+
+**Q：扫描 10000 封邮件大概要多久？**
+
+A：按当前版本在真实邮箱上的测试经验，粗略可以这样估：
+- **只扫描和分类**：约 `10 到 15 分钟`
+- **扫描 + 实际退订少量候选发件人**：约 `12 到 20 分钟`
+
+影响时间的主要因素：
+1. 是否用了 `--all`（比只扫促销标签慢很多）
+2. 是否开启 AI
+3. 最终需要实际退订的发件人数
+4. Gmail API 是否触发重试
+
+如果您只是想先判断结果靠不靠谱，建议先用：
+`python3 main.py scan --days 0 --all --max-messages 500 --no-ai`
 
 **Q：退订成功了，但旧邮件还在收件箱？**
 
@@ -400,7 +458,7 @@ USE_AI_CLASSIFIER = False
 | Google 账号密码 | 程序**永远不接触**您的密码，使用 OAuth 2.0 临时令牌 |
 | OAuth 令牌 | 保存在 `token.json`，已加入 .gitignore，不会上传 git |
 | API 凭证 | `credentials.json` 已加入 .gitignore，不会上传 git |
-| AI API Key（MiniMax / Anthropic）| 建议用环境变量，不要写进代码文件 |
+| AI API Key | 存入 `user_config.json`（已加入 `.gitignore`），不写入代码；展示时脱敏 |
 | 邮件内容 | AI 判断只发送发件人 + 主题 + 摘要，不发送邮件正文 |
 | 退订操作 | 只发退订请求，**不删除任何邮件** |
 

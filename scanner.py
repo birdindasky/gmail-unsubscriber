@@ -21,9 +21,13 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RETRY_DELAY = 2
-REQUEST_SLEEP = 0.15   # 每个线程请求之间的休眠（3线程 × 6.7 req/s ≈ 20 req/s）
-CONCURRENT_WORKERS = 3  # 并发线程数（保守值，不触发 Gmail 并发限制）
+REQUEST_SLEEP = 0.15   # 默认每个线程请求之间的休眠
+CONCURRENT_WORKERS = 3  # 默认并发线程数（保守值，不触发 Gmail 并发限制）
 PROGRESS_INTERVAL = 50  # 每处理多少封打印一次进度
+LIST_PROGRESS_INTERVAL = 5  # 每拉取多少页打印一次列表阶段进度
+LARGE_SCAN_THRESHOLD = 1000
+VERY_LARGE_SCAN_THRESHOLD = 5000
+ALL_MAIL_BASE_EXCLUDES = "-in:sent -in:drafts -in:trash -in:spam"
 
 # 每个线程维护自己的 Gmail service 对象
 _thread_local = threading.local()
@@ -61,7 +65,23 @@ def _retry_request(func, *args, **kwargs):
     raise last_error
 
 
-def scan_emails(service, days: int = 30, scan_all: bool = False) -> list[dict]:
+def _get_fetch_settings(total_messages: int) -> tuple[int, float]:
+    """按任务规模选择 metadata 拉取并发度与请求间隔。"""
+    if total_messages >= VERY_LARGE_SCAN_THRESHOLD:
+        return 6, 0.03
+    if total_messages >= LARGE_SCAN_THRESHOLD:
+        return 5, 0.05
+    if total_messages >= 300:
+        return 4, 0.08
+    return CONCURRENT_WORKERS, REQUEST_SLEEP
+
+
+def scan_emails(
+    service,
+    days: int = 30,
+    scan_all: bool = False,
+    max_messages: Optional[int] = None,
+) -> list[dict]:
     """
     扫描最近 N 天内收到的邮件，返回邮件详情列表。
     默认优先扫描 CATEGORY_PROMOTIONS 标签；scan_all=True 时扫描全部邮件。
@@ -78,24 +98,39 @@ def scan_emails(service, days: int = 30, scan_all: bool = False) -> list[dict]:
         time_desc = f"最近 {days} 天"
 
     if scan_all:
-        query = f"{date_filter}".strip() or ""
-        label_desc = "全部邮件"
+        query = f"{date_filter}{ALL_MAIL_BASE_EXCLUDES}".strip()
+        label_desc = "全部邮件（已排除已发送/草稿/垃圾箱/垃圾邮件）"
     else:
         query = f"{date_filter}category:promotions"
         label_desc = "促销邮件"
 
     logger.info(f"扫描{time_desc}的{label_desc}")
     print(f"\n📬 正在扫描{time_desc}的{label_desc}...")
+    if max_messages:
+        print(f"   最多处理前 {max_messages} 封邮件")
 
-    message_stubs = _list_all_messages(service, query)
+    message_stubs = _list_all_messages(service, query, max_messages=max_messages)
     total = len(message_stubs)
     logger.info(f"共找到 {total} 封邮件，开始批量解析...")
     print(f"   共找到 {total} 封邮件，正在批量解析详情...\n")
 
+    if total >= VERY_LARGE_SCAN_THRESHOLD:
+        print("   ⚠️  当前任务非常大，可能需要较长时间。")
+        print("   提示：可加 --max-messages N 先做抽样验证。\n")
+    elif total >= LARGE_SCAN_THRESHOLD:
+        print("   ⏳ 当前样本较大，请耐心等待；程序会持续打印进度。\n")
+
     if total == 0:
         return []
 
-    emails = _fetch_messages_batch(service, message_stubs)
+    workers, request_sleep = _get_fetch_settings(total)
+    print(f"   扫描配置：{workers} 线程 / 每请求间隔 {request_sleep:.2f}s\n")
+    emails = _fetch_messages_batch(
+        service,
+        message_stubs,
+        workers=workers,
+        request_sleep=request_sleep,
+    )
 
     # 过滤已退订的发件人
     already_done = set()
@@ -117,9 +152,14 @@ def scan_emails(service, days: int = 30, scan_all: bool = False) -> list[dict]:
     return filtered
 
 
-def _fetch_messages_batch(service, message_stubs: list[dict]) -> list[dict]:
+def _fetch_messages_batch(
+    service,
+    message_stubs: list[dict],
+    workers: int = CONCURRENT_WORKERS,
+    request_sleep: float = REQUEST_SLEEP,
+) -> list[dict]:
     """
-    使用 3 线程并发获取邮件 metadata，遇到 429 自动退避重试。
+    并发获取邮件 metadata，遇到 429 自动退避重试。
     每个线程维护独立的请求间隔以控制总 QPS。
     """
     results = []
@@ -158,7 +198,7 @@ def _fetch_messages_batch(service, message_stubs: list[dict]) -> list[dict]:
                 logger.warning(f"邮件解析失败（{stub['id']}）：{e}")
                 break
 
-        time.sleep(REQUEST_SLEEP)
+        time.sleep(request_sleep)
 
         with progress_lock:
             progress["done"] += 1
@@ -168,7 +208,7 @@ def _fetch_messages_batch(service, message_stubs: list[dict]) -> list[dict]:
 
         return parsed
 
-    with ThreadPoolExecutor(max_workers=CONCURRENT_WORKERS) as executor:
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {executor.submit(fetch_one, stub): stub for stub in message_stubs}
         for future in as_completed(futures):
             result = future.result()
@@ -179,10 +219,12 @@ def _fetch_messages_batch(service, message_stubs: list[dict]) -> list[dict]:
     return results
 
 
-def _list_all_messages(service, query: str) -> list[dict]:
+def _list_all_messages(service, query: str, max_messages: Optional[int] = None) -> list[dict]:
     """分页获取所有符合查询条件的邮件存根。"""
     messages = []
     page_token = None
+    page_count = 0
+    started_at = time.time()
 
     while True:
         kwargs = {"userId": "me", "q": query, "maxResults": 500}
@@ -197,6 +239,16 @@ def _list_all_messages(service, query: str) -> list[dict]:
             break
 
         messages.extend(response.get("messages", []))
+        page_count += 1
+        if page_count == 1 or page_count % LIST_PROGRESS_INTERVAL == 0:
+            elapsed = int(time.time() - started_at)
+            print(f"   列表进度：已拉取 {page_count} 页，累计 {len(messages)} 封（{elapsed}s）")
+
+        if max_messages and len(messages) >= max_messages:
+            messages = messages[:max_messages]
+            print(f"   已达到上限：提前截断为前 {len(messages)} 封邮件")
+            break
+
         page_token = response.get("nextPageToken")
         if not page_token:
             break
@@ -247,5 +299,3 @@ def _parse_sender(sender_raw: str) -> tuple[str, str]:
 
     domain = email_addr.split("@")[-1] if "@" in email_addr else ""
     return email_addr, domain
-
-

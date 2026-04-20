@@ -57,6 +57,21 @@ def test_filter_already_unsubscribed(monkeypatch, tmp_path):
     assert "legit@work.com" in sender_emails
 
 
+def test_scan_emails_passes_max_messages():
+    mock_service = MagicMock()
+    parsed = scanner._parse_message(_make_msg("id1", "test@example.com"))
+
+    with patch.object(scanner, "_list_all_messages", return_value=[{"id": "id1"}]) as mock_list, \
+         patch.object(scanner, "_fetch_messages_batch", return_value=[parsed]):
+        scanner.scan_emails(mock_service, days=0, scan_all=True, max_messages=123)
+
+    mock_list.assert_called_once_with(
+        mock_service,
+        scanner.ALL_MAIL_BASE_EXCLUDES,
+        max_messages=123,
+    )
+
+
 def test_parse_sender_extracts_email():
     email_addr, domain = scanner._parse_sender("Google <no-reply@google.com>")
     assert email_addr == "no-reply@google.com"
@@ -113,7 +128,61 @@ def test_fetch_messages_batch_concurrent():
     with patch("scanner._get_thread_service", return_value=mock_service), \
          patch("scanner.time") as mock_time:
         mock_time.sleep = MagicMock()
-        results = scanner._fetch_messages_batch(mock_service, stubs)
+        results = scanner._fetch_messages_batch(mock_service, stubs, workers=3, request_sleep=0)
 
     assert len(results) == 6
     assert call_count["n"] == 6
+
+
+def test_get_fetch_settings_by_size():
+    assert scanner._get_fetch_settings(100) == (3, 0.15)
+    assert scanner._get_fetch_settings(300) == (4, 0.08)
+    assert scanner._get_fetch_settings(1000) == (5, 0.05)
+    assert scanner._get_fetch_settings(5000) == (6, 0.03)
+
+
+def test_list_all_messages_respects_limit():
+    mock_service = MagicMock()
+    first_page = {
+        "messages": [{"id": "1"}, {"id": "2"}],
+        "nextPageToken": "page-2",
+    }
+    second_page = {
+        "messages": [{"id": "3"}, {"id": "4"}],
+    }
+    mock_service.users.return_value.messages.return_value.list.side_effect = [
+        MagicMock(execute=MagicMock(return_value=first_page)),
+        MagicMock(execute=MagicMock(return_value=second_page)),
+    ]
+
+    with patch("scanner.time.time", side_effect=[0, 1]):
+        results = scanner._list_all_messages(mock_service, "category:promotions", max_messages=3)
+
+    assert results == [{"id": "1"}, {"id": "2"}, {"id": "3"}]
+
+
+def test_list_all_messages_prints_progress(capsys):
+    mock_service = MagicMock()
+    first_page = {"messages": [{"id": "1"}]}
+    mock_service.users.return_value.messages.return_value.list.return_value.execute.return_value = first_page
+
+    with patch("scanner.time.time", return_value=0):
+        scanner._list_all_messages(mock_service, "category:promotions")
+
+    captured = capsys.readouterr()
+    assert "列表进度" in captured.out
+
+
+def test_scan_all_query_excludes_non_inbox_buckets():
+    mock_service = MagicMock()
+    parsed = scanner._parse_message(_make_msg("id1", "test@example.com"))
+
+    with patch.object(scanner, "_list_all_messages", return_value=[{"id": "id1"}]) as mock_list, \
+         patch.object(scanner, "_fetch_messages_batch", return_value=[parsed]):
+        scanner.scan_emails(mock_service, days=0, scan_all=True)
+
+    query = mock_list.call_args.args[1]
+    assert "-in:sent" in query
+    assert "-in:drafts" in query
+    assert "-in:trash" in query
+    assert "-in:spam" in query

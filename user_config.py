@@ -13,22 +13,23 @@ _EMPTY = {"ai_provider": None, "providers": {}}
 
 def load_config() -> dict:
     if not os.path.exists(CONFIG_FILE):
-        return dict(_EMPTY, providers={})
+        return _EMPTY.copy()
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict):
-            return dict(_EMPTY, providers={})
+            return _EMPTY.copy()
         data.setdefault("ai_provider", None)
         data.setdefault("providers", {})
         return data
     except (json.JSONDecodeError, OSError):
-        return dict(_EMPTY, providers={})
+        return _EMPTY.copy()
 
 
 def save_config(config: dict) -> None:
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
+    os.chmod(CONFIG_FILE, 0o600)
 
 
 def mask_key(key: str) -> str:

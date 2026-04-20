@@ -19,6 +19,16 @@ import config
 
 logger = logging.getLogger(__name__)
 
+FEEDBACK_SURVEY_KEYWORDS = [
+    "survey", "feedback", "questionnaire", "exit interview",
+    "问卷", "调查", "反馈", "改进建议",
+]
+
+CANCELLATION_CONTEXT_KEYWORDS = [
+    "unsubscribe", "unsubscribed", "cancel subscription", "cancellation",
+    "取消订阅", "取消了", "离开", "为何取消",
+]
+
 
 # ────────────────────────────────────────────────────────────────
 #  白名单检查
@@ -65,6 +75,22 @@ def is_sensitive(email_data: dict) -> bool:
     return False
 
 
+def is_post_cancellation_feedback(email_data: dict) -> bool:
+    """识别“取消后反馈调查”类邮件，避免误当作可退订营销邮件。"""
+    if email_data.get("list_unsubscribe"):
+        return False
+
+    check_text = " ".join([
+        email_data.get("subject", ""),
+        email_data.get("snippet", ""),
+        email_data.get("body_text", "") or "",
+    ]).lower()
+
+    has_feedback = any(keyword in check_text for keyword in FEEDBACK_SURVEY_KEYWORDS)
+    has_cancellation_context = any(keyword in check_text for keyword in CANCELLATION_CONTEXT_KEYWORDS)
+    return has_feedback and has_cancellation_context
+
+
 # ────────────────────────────────────────────────────────────────
 #  广告内容检查
 # ────────────────────────────────────────────────────────────────
@@ -98,8 +124,11 @@ def is_advertisement(email_data: dict) -> tuple[bool, list[str]]:
     # 条件 2：发件人显示名称或域名含可疑关键词（不含 local part，避免误判）
     sender_domain = email_data.get("sender_domain", "").lower()
     sender_display = sender.split("<")[0].strip() if "<" in sender else ""
-    sender_check = f"{sender_display} {sender_domain}"
-    matched_sender_kw = [kw for kw in config.SUSPICIOUS_SENDER_KEYWORDS if kw.lower() in sender_check]
+    sender_tokens = _extract_sender_tokens(sender_display, sender_domain)
+    matched_sender_kw = [
+        kw for kw in config.SUSPICIOUS_SENDER_KEYWORDS
+        if kw.lower() in sender_tokens
+    ]
     if matched_sender_kw:
         matched_conditions.append(f"发件人含可疑关键词：{', '.join(matched_sender_kw[:2])}")
 
@@ -118,6 +147,19 @@ def is_advertisement(email_data: dict) -> tuple[bool, list[str]]:
 
     is_ad = len(matched_conditions) >= 2
     return is_ad, matched_conditions
+
+
+def _extract_sender_tokens(sender_display: str, sender_domain: str) -> set[str]:
+    """将发件人名称和域名切成词元，避免 brand 名称里的子串误判。"""
+    raw = f"{sender_display} {sender_domain}".lower()
+    parts = re.findall(r"[\w\u4e00-\u9fff]+", raw)
+    tokens = set(parts)
+
+    expanded = set()
+    for part in parts:
+        expanded.add(part)
+        expanded.update(p for p in re.split(r"[_\-.]+", part) if p)
+    return tokens | expanded
 
 
 # ────────────────────────────────────────────────────────────────
@@ -147,6 +189,10 @@ def should_unsubscribe(email_data: dict, use_ai: bool = True) -> tuple[bool, str
     # 第二道防线：敏感内容
     if is_sensitive(email_data):
         return False, "邮件含敏感关键词（验证码/订单/账单等），已跳过"
+
+    # 第三道防线：取消后反馈调查，不属于邮件列表退订目标
+    if is_post_cancellation_feedback(email_data):
+        return False, "邮件属于取消后的反馈调查，不是可执行退订的订阅邮件"
 
     # 广告特征判断
     is_ad, conditions = is_advertisement(email_data)

@@ -72,6 +72,42 @@ def test_one_condition_no_ai_not_unsubscribed():
     assert result is False
 
 
+def test_post_cancellation_feedback_not_unsubscribed():
+    em = _make_email(
+        "noreply@tm.openai.com",
+        "我们希望了解你为何取消 ChatGPT Plus 订阅",
+        labels=["CATEGORY_PROMOTIONS"],
+        snippet="看到你要离开，我们深表遗憾。你是否愿意花几分钟时间分享取消订阅的原因并提供改进建议？本调查仅需几分钟。",
+    )
+    result, reason = classifier.should_unsubscribe(em, use_ai=False)
+    assert result is False
+    assert "反馈调查" in reason
+
+
+def test_salesforce_brand_not_matched_by_sales_keyword():
+    em = _make_email(
+        "support@salesforce.com",
+        "我们已接收到要求更改您的 Salesforce 客户电子邮件地址的请求。",
+        labels=["CATEGORY_UPDATES"],
+        snippet="我们最近收到请求，以更改用户名的 Salesforce 账户的电子邮件地址。",
+    )
+    result, reason = classifier.should_unsubscribe(em, use_ai=False)
+    assert result is False
+    assert "未达到广告判定标准" in reason
+
+
+def test_sales_subdomain_still_matches_suspicious_sender_keyword():
+    em = _make_email(
+        "offers@sales.example.com",
+        "新品推荐",
+        labels=["CATEGORY_UPDATES"],
+        snippet="本周活动",
+    )
+    result, reason = classifier.should_unsubscribe(em, use_ai=False)
+    assert result is True
+    assert "可疑关键词" in reason
+
+
 def test_classify_emails_tracks_message_ids():
     emails = [
         _make_email("spam@ads.com", "大促销", ["CATEGORY_PROMOTIONS"],

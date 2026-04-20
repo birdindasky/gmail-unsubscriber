@@ -82,3 +82,23 @@ def test_archive_sender_emails_removes_inbox():
     # 验证 INBOX 出现在调用参数中
     all_calls = str(mock_service.users.return_value.messages.return_value.modify.call_args_list)
     assert "INBOX" in all_calls
+
+
+def test_dry_run_fetches_html_when_sample_html_missing():
+    mock_service = MagicMock()
+    sender_group = {
+        "sender_email": "news@example.com",
+        "sender": "News <news@example.com>",
+        "list_unsubscribe": None,
+        "list_unsubscribe_post": None,
+        "sample_html": "",
+        "sample_id": "msg-1",
+        "message_ids": ["msg-1"],
+    }
+
+    with patch("unsubscriber._fetch_html_body", return_value='<a href="https://example.com/unsubscribe">unsubscribe</a>'):
+        result = unsubscriber.execute_unsubscribe(sender_group, service=mock_service, dry_run=True)
+
+    assert result["success"] is True
+    assert result["details"]["available_methods"]
+    assert "正文退订链接" in result["details"]["available_methods"][0]

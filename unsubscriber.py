@@ -360,6 +360,9 @@ def execute_unsubscribe(
                 available_methods.append(f"✓ {method_name}：{unsub_info['http_url'][:60]}...")
             if unsub_info["mailto_email"]:
                 available_methods.append(f"✓ mailto 退订：{unsub_info['mailto_email']}")
+        if not html_body:
+            sample_id = sender_group.get("sample_id", "")
+            html_body = _fetch_html_body(service, sample_id)
         if html_body:
             link = _find_unsubscribe_link(html_body)
             if link:

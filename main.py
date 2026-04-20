@@ -28,8 +28,15 @@ Gmail 自动退订工具 - 主入口
 import argparse
 import logging
 import os
+import ssl
 import sys
+import warnings
 from datetime import datetime
+from typing import Optional
+
+# 避免第三方库直接向用户抛出难理解的底层环境告警，改由本程序统一提示。
+warnings.filterwarnings("ignore", category=FutureWarning, module=r"google(\.|$)")
+warnings.filterwarnings("ignore", message=r".*LibreSSL.*", module=r"urllib3(\.|$)")
 
 import auth
 import classifier
@@ -76,6 +83,60 @@ def setup_logging(verbose: bool = False) -> None:
 
 
 logger = logging.getLogger(__name__)
+DEFAULT_FULL_SCAN_MAX_MESSAGES = 2000
+
+
+def get_runtime_warnings(version_info=None, openssl_version: Optional[str] = None) -> list[str]:
+    """返回当前运行环境需要提示给用户的风险信息。"""
+    if version_info is None:
+        version_info = sys.version_info
+    if openssl_version is None:
+        openssl_version = getattr(ssl, "OPENSSL_VERSION", "")
+
+    notices = []
+    if tuple(version_info[:2]) < (3, 10):
+        notices.append(
+            "当前 Python 版本过低（检测到 "
+            f"{version_info[0]}.{version_info[1]}），建议升级到 Python 3.10+。"
+        )
+
+    if "LibreSSL" in openssl_version:
+        notices.append(
+            "当前 Python 的 SSL 后端是 LibreSSL，部分 HTTPS / API 请求可能出现兼容性问题；"
+            "建议使用基于 OpenSSL 1.1.1+ 的 Python。"
+        )
+
+    return notices
+
+
+def print_runtime_warnings() -> None:
+    """在启动时打印简洁、可操作的环境提示。"""
+    notices = get_runtime_warnings()
+    if not notices:
+        return
+
+    print("⚠️  运行环境提示：", file=sys.stderr)
+    for notice in notices:
+        print(f"   - {notice}", file=sys.stderr)
+    print("   - 推荐：重新创建虚拟环境后执行 `python -m pytest` 验证。", file=sys.stderr)
+    print(file=sys.stderr)
+
+
+def resolve_scan_limit(args: argparse.Namespace) -> Optional[int]:
+    """为超大扫描任务应用默认保护上限。"""
+    max_messages = getattr(args, "max_messages", None)
+    if max_messages:
+        return max_messages
+
+    if getattr(args, "days", None) == 0 and getattr(args, "all", False) and not getattr(args, "full_scan", False):
+        print(
+            f"⚠️  检测到“全历史 + 全部邮件”扫描，默认仅处理前 {DEFAULT_FULL_SCAN_MAX_MESSAGES} 封。"
+        )
+        print("   如需完整扫描，请显式加上 `--full-scan`。")
+        print()
+        return DEFAULT_FULL_SCAN_MAX_MESSAGES
+
+    return None
 
 
 # ────────────────────────────────────────────────────────────────
@@ -90,7 +151,12 @@ def cmd_scan(args: argparse.Namespace) -> None:
 
     service = auth.get_gmail_service()
     use_ai = not args.no_ai
-    emails = scanner.scan_emails(service, days=args.days, scan_all=args.all)
+    emails = scanner.scan_emails(
+        service,
+        days=args.days,
+        scan_all=args.all,
+        max_messages=resolve_scan_limit(args),
+    )
 
     if not emails:
         print("📭 最近邮件为空或扫描结果为零。")
@@ -175,7 +241,12 @@ def cmd_unsubscribe(args: argparse.Namespace) -> None:
     days = getattr(args, "days", 30)
     scan_all = getattr(args, "all", False)
     service = auth.get_gmail_service()
-    emails = scanner.scan_emails(service, days=days, scan_all=scan_all)
+    emails = scanner.scan_emails(
+        service,
+        days=days,
+        scan_all=scan_all,
+        max_messages=resolve_scan_limit(args),
+    )
 
     if not emails:
         print("📭 未找到邮件。")
@@ -369,7 +440,7 @@ def interactive_menu() -> None:
 
 
 def _ask_scan_params() -> tuple:
-    """交互式询问扫描参数，返回 (days, scan_all, use_ai)。"""
+    """交互式询问扫描参数，返回 (days, scan_all, use_ai, max_messages)。"""
     print("\n── 扫描设置 ──")
     days_input = input("  扫描最近几天的邮件？（默认 30，输入 0 扫全部历史）> ").strip()
     days = int(days_input) if days_input.isdigit() else 30
@@ -380,13 +451,21 @@ def _ask_scan_params() -> tuple:
     ai_choice = input("  使用 AI 辅助判断？ 1=是（默认） 2=否 > ").strip()
     use_ai = ai_choice != "2"
 
-    return days, scan_all, use_ai
+    limit_input = input("  最多处理多少封邮件？（默认不限，输入数字可加速验证）> ").strip()
+    max_messages = int(limit_input) if limit_input.isdigit() and int(limit_input) > 0 else None
+
+    return days, scan_all, use_ai, max_messages
 
 
-def _do_scan_and_classify(days, scan_all, use_ai):
+def _do_scan_and_classify(days, scan_all, use_ai, max_messages=None):
     """执行扫描和分类，返回 (categorized, to_unsub, emails_count)。"""
     service = auth.get_gmail_service()
-    emails = scanner.scan_emails(service, days=days, scan_all=scan_all)
+    emails = scanner.scan_emails(
+        service,
+        days=days,
+        scan_all=scan_all,
+        max_messages=max_messages,
+    )
 
     if not emails:
         print("📭 未找到邮件。")
@@ -414,8 +493,8 @@ def _display_categories(categorized: dict) -> None:
 
 def _interactive_scan() -> None:
     """交互式扫描。"""
-    days, scan_all, use_ai = _ask_scan_params()
-    categorized, to_unsub, total = _do_scan_and_classify(days, scan_all, use_ai)
+    days, scan_all, use_ai, max_messages = _ask_scan_params()
+    categorized, to_unsub, total = _do_scan_and_classify(days, scan_all, use_ai, max_messages)
 
     if not categorized:
         _last_scan["categorized"] = None
@@ -450,13 +529,13 @@ def _interactive_unsubscribe() -> None:
             total = _last_scan["total"]
             days = _last_scan["days"]
         else:
-            days, scan_all, use_ai = _ask_scan_params()
-            categorized, to_unsub, total = _do_scan_and_classify(days, scan_all, use_ai)
+            days, scan_all, use_ai, max_messages = _ask_scan_params()
+            categorized, to_unsub, total = _do_scan_and_classify(days, scan_all, use_ai, max_messages)
             if not categorized:
                 return
     else:
-        days, scan_all, use_ai = _ask_scan_params()
-        categorized, to_unsub, total = _do_scan_and_classify(days, scan_all, use_ai)
+        days, scan_all, use_ai, max_messages = _ask_scan_params()
+        categorized, to_unsub, total = _do_scan_and_classify(days, scan_all, use_ai, max_messages)
         if not categorized:
             return
 
@@ -622,6 +701,9 @@ def _configure_ai_provider() -> None:
         return
     try:
         idx = int(sel) - 1
+        if idx < 0 or idx >= len(order):
+            print("❌ 无效选择")
+            return
         provider_id = order[idx]
     except (ValueError, IndexError):
         print("❌ 无效选择")
@@ -643,7 +725,8 @@ def _configure_ai_provider() -> None:
     else:
         model = meta["default_model"]
 
-    api_key = input(f"请输入 API Key ({meta['key_hint']}): ").strip()
+    import getpass
+    api_key = getpass.getpass(f"请输入 API Key ({meta['key_hint']}): ").strip()
     if not api_key:
         print("❌ API Key 不能为空")
         return
@@ -665,8 +748,10 @@ def _configure_ai_provider() -> None:
 
     user_config.set_active_provider(
         provider_id, api_key, model,
-        base_url if provider_id == "custom" else None,
+        base_url,
     )
+    from ai_classifier import invalidate_provider_cache
+    invalidate_provider_cache()
     print(f"✅ 连接成功！已保存配置。当前使用：{meta['name']}（模型：{model}）")
 
 
@@ -855,6 +940,10 @@ def build_parser() -> argparse.ArgumentParser:
                              help="扫描最近 N 天的邮件（默认：30；0 = 不限时间扫全部）")
     scan_parser.add_argument("--all", action="store_true",
                              help="扫描全部邮件（默认只扫促销标签）")
+    scan_parser.add_argument("--max-messages", type=int, metavar="N",
+                             help="最多处理前 N 封邮件，适合大样本抽样验证")
+    scan_parser.add_argument("--full-scan", action="store_true",
+                             help="在 --days 0 --all 下关闭默认保护上限，执行完整扫描")
     scan_parser.add_argument("--no-ai", action="store_true", dest="no_ai",
                              help="不使用 Claude AI 辅助判断")
     scan_parser.set_defaults(func=cmd_scan)
@@ -865,6 +954,10 @@ def build_parser() -> argparse.ArgumentParser:
                               help="扫描最近 N 天的邮件（默认：30）")
     unsub_parser.add_argument("--all", action="store_true",
                               help="扫描全部邮件（默认只扫促销标签）")
+    unsub_parser.add_argument("--max-messages", type=int, metavar="N",
+                              help="最多处理前 N 封邮件，适合大样本抽样验证")
+    unsub_parser.add_argument("--full-scan", action="store_true",
+                              help="在 --days 0 --all 下关闭默认保护上限，执行完整扫描")
     unsub_parser.add_argument("--no-ai", action="store_true", dest="no_ai",
                               help="不使用 Claude AI 辅助判断")
     unsub_parser.add_argument("--archive", action="store_true",
@@ -908,6 +1001,8 @@ def main() -> None:
     import user_config
     if user_config.migrate_from_env():
         print("✅ 已把环境变量中的 AI 配置迁移到 user_config.json")
+
+    print_runtime_warnings()
 
     if len(sys.argv) == 1:
         try:

@@ -23,6 +23,7 @@ WHITELIST_DOMAINS = [
     # Google 全家桶
     "google.com", "gmail.com", "googlemail.com", "youtube.com",
     "google.cn", "googleplex.com", "firebase.com", "gcp.google.com",
+    "nest.com",
 
     # 主要科技公司
     "apple.com", "microsoft.com", "amazon.com", "amazon.cn",

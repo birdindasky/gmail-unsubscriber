@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AI 分类模块 - 支持 MiniMax 和 Anthropic 两种 AI 提供商
+AI 分类模块 - 支持 9 种 AI 提供商（含自定义 OpenAI 兼容入口）
 功能：
 1. classify_with_ai() — 判断邮件是否为广告（关键词命中 1 条时触发）
 2. categorize_with_ai() — 判断发件人所属邮件类别
@@ -124,14 +124,37 @@ def _call_openai(prompt: str, provider: dict) -> str:
         max_tokens=getattr(config, "AI_MAX_TOKENS", 1024),
         messages=[{"role": "user", "content": prompt}],
     )
-    return resp.choices[0].message.content.strip() if resp.choices else ""
+    content = resp.choices[0].message.content if resp.choices else ""
+    return (content or "").strip()
+
+
+_cached_provider: Optional[dict] = None
+
+
+def _get_provider() -> dict:
+    """获取活跃提供商配置（进程内缓存，避免每次 AI 调用都读磁盘）。"""
+    global _cached_provider
+    if _cached_provider is not None:
+        return _cached_provider
+    provider = user_config.get_active_provider()
+    if not provider:
+        raise RuntimeError("未配置 AI 提供商")
+    meta = PROVIDERS.get(provider["id"])
+    if meta and not provider.get("base_url") and meta.get("base_url"):
+        provider["base_url"] = meta["base_url"]
+    _cached_provider = provider
+    return provider
+
+
+def invalidate_provider_cache() -> None:
+    """清除提供商缓存（配置变更后调用）。"""
+    global _cached_provider
+    _cached_provider = None
 
 
 def _call_ai(prompt: str) -> str:
     """按活跃提供商的 protocol 分发调用。"""
-    provider = user_config.get_active_provider()
-    if not provider:
-        raise RuntimeError("未配置 AI 提供商")
+    provider = _get_provider()
     meta = PROVIDERS.get(provider["id"])
     if not meta:
         raise ValueError(f"未知提供商：{provider['id']}")
@@ -163,8 +186,9 @@ def _parse_json_response(text: str) -> dict:
 def _check_ai_available() -> tuple[bool, str]:
     if not config.USE_AI_CLASSIFIER:
         return False, "AI 分类已关闭"
-    provider = user_config.get_active_provider()
-    if not provider:
+    try:
+        _get_provider()
+    except RuntimeError:
         return False, "未配置 AI 提供商，跳过 AI 分类"
     return True, ""
 

@@ -8,6 +8,7 @@
 - **默认 dry-run**：所有操作先预览再执行，不会误退订
 - **不删除邮件**：只退订，不动收件箱
 - **逐个确认**：默认逐个确认每个发件人
+- **全历史保护**：`--days 0 --all` 默认只处理前 `2000` 封，避免误跑整箱
 
 > 💻 **支持平台**：Mac / Linux / Windows / WSL2，全平台通用。Windows 原生和 WSL2 的命令差异详见 [USAGE_GUIDE.md](./docs/USAGE_GUIDE.md#2-首次配置只需做一次)。
 
@@ -30,6 +31,18 @@ pip install -r requirements.txt
 python3 main.py
 ```
 
+## 🔧 运行环境
+
+- 推荐 `Python 3.10+`
+- 测试依赖在 `requirements-dev.txt`
+- 如果本机默认 `python3` 里没有 `pytest`，请先激活项目虚拟环境再执行测试
+
+```bash
+source venv/bin/activate
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
 ## 📖 两种使用方式
 
 ### 方式一：交互式菜单（推荐新手）
@@ -46,11 +59,26 @@ python3 main.py
 
 ```bash
 python3 main.py scan                              # 扫描最近 30 天
-python3 main.py scan --days 0 --all               # 扫全部历史
+python3 main.py scan --days 0                     # 扫全部历史促销邮件
+python3 main.py scan --days 0 --all               # 扫全部历史邮件（默认保护到前 2000 封）
+python3 main.py scan --days 0 --all --max-messages 500  # 全历史先抽样 500 封
+python3 main.py scan --days 0 --all --full-scan   # 明确执行全历史完整扫描
 python3 main.py unsubscribe --dry-run             # 预览退订
 python3 main.py unsubscribe --confirm             # 逐个确认退订
 python3 main.py unsubscribe --confirm --auto      # 自动退订全部
 ```
+
+## 📌 推荐用法
+
+- 日常清理：`python3 main.py scan --days 30 --no-ai`
+- 历史促销清理：`python3 main.py scan --days 0 --no-ai`
+- 全邮箱排查先抽样：`python3 main.py scan --days 0 --all --max-messages 500 --no-ai`
+- 只有在您明确要扫完整个邮箱时，再加：`--full-scan`
+
+**时间预期（当前版本的大致经验值）：**
+- 扫描 `10000` 封邮件：通常约 `10 到 15 分钟`
+- 扫描 + 实际退订少量候选发件人：通常约 `12 到 20 分钟`
+- `--all` 比只扫促销标签明显更慢，建议先抽样
 
 ## 🤖 AI 支持
 
@@ -77,3 +105,4 @@ python3 main.py unsubscribe --confirm --auto      # 自动退订全部
 2. **白名单机制**：重要邮件不会被退订
 3. **不删除任何邮件**：退订和删除是独立操作
 4. **OAuth 安全**：使用 Gmail API 而非 IMAP 密码
+5. **全历史全邮箱默认保护**：`--days 0 --all` 默认只处理前 `2000` 封；如需完整扫描，必须显式加 `--full-scan`
