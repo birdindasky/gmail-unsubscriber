@@ -148,7 +148,8 @@ def unsubscribe_via_mailto(mailto_info: dict, service=None) -> dict:
             "message": f"退订邮件已发送至 {email_addr}（主题：{subject}）",
         }
     except Exception as e:
-        logger.error(f"发送退订邮件失败：{e}")
+        safe = re.sub(r"(?i)\b(sk|pk|Bearer|access_token)[=:\s]\S+", "[REDACTED]", str(e))
+        logger.error(f"发送退订邮件失败：{safe}")
         return {"success": False, "method": "mailto", "message": f"发送退订邮件失败：{e}"}
 
 

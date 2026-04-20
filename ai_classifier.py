@@ -16,6 +16,14 @@ import user_config
 
 logger = logging.getLogger(__name__)
 
+_SECRET_RE = re.compile(r"(?i)\b(sk|pk|api[_-]?key)[\w\-]{8,}")
+
+
+def _mask_secrets(text: str) -> str:
+    """Redact anything that looks like an API key / long secret in log strings."""
+    return _SECRET_RE.sub("[REDACTED]", text)
+
+
 # ────────────────────────────────────────────────────────────────
 #  提供商注册表
 # ────────────────────────────────────────────────────────────────
@@ -217,10 +225,10 @@ def classify_with_ai(sender: str, subject: str, snippet: str) -> tuple[bool, str
         logger.debug(f"AI 判定：{'广告' if is_ad else '非广告'} — {reason}")
         return is_ad, reason
     except json.JSONDecodeError as e:
-        logger.warning(f"AI 返回格式解析失败：{e}")
+        logger.warning(f"AI 返回格式解析失败：{_mask_secrets(str(e))}")
         return False, f"AI 返回格式解析失败：{e}"
     except Exception as e:
-        logger.warning(f"AI 分类调用失败：{e}")
+        logger.warning(f"AI 分类调用失败：{_mask_secrets(str(e))}")
         return False, f"AI 调用失败：{e}"
 
 
@@ -250,7 +258,7 @@ def categorize_with_ai(sender: str, subject: str) -> str:
             return "其他"
         return category
     except Exception as e:
-        logger.warning(f"AI 分类调用失败：{e}")
+        logger.warning(f"AI 分类调用失败：{_mask_secrets(str(e))}")
         return "其他"
 
 

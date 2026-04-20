@@ -271,3 +271,16 @@ def test_test_connection_unknown_provider():
     ok, msg = ai_classifier.test_connection("not-a-provider", "x", "x", None)
     assert ok is False
     assert "未知" in msg
+
+
+def test_mask_secrets_hides_api_key():
+    import ai_classifier
+    text = "Unauthorized: key=sk-ant-abc1234567890xyz invalid"
+    out = ai_classifier._mask_secrets(text)
+    assert "sk-ant-abc1234567890xyz" not in out
+    assert "[REDACTED]" in out
+
+
+def test_mask_secrets_leaves_normal_text():
+    import ai_classifier
+    assert ai_classifier._mask_secrets("simple error msg") == "simple error msg"
