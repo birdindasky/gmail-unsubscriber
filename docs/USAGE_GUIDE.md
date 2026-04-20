@@ -298,8 +298,8 @@ python3 main.py whitelist add newsletter-i-like.com
 - 银行 & 金融：工商银行、招商银行、PayPal、Alipay 等
 - 科技公司：Google、Apple、Microsoft、GitHub 等
 - 中国平台：淘宝、京东、163 邮箱等
-- 政府机构：gov.cn 等
-- 教育机构：.edu、edu.cn、coursera.org 等
+- 政府机构：gov.cn、gov.sg、irs.gov 等
+- 教育机构：edu.cn、mit.edu、stanford.edu、harvard.edu、coursera.org 等（按具体域名匹配，不做 `.edu` 顶级域名整体放行）
 
 ---
 

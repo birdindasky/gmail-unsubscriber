@@ -25,18 +25,17 @@
 
 | 函数名 | 说明 |
 |--------|------|
-| `get_all_whitelist_domains()` | 返回内置 + 用户自定义白名单的合集 |
-| `load_user_whitelist()` | 从 `user_whitelist.json` 加载用户自定义白名单 |
-| `save_user_whitelist(domains)` | 将用户白名单保存到 `user_whitelist.json` |
-| `add_to_user_whitelist(domain)` | 向用户白名单新增域名，返回是否新增成功 |
+| `get_all_whitelist_domains()` | 返回内置 + 用户自定义白名单（SQLite）的合集 |
+
+用户自定义白名单的增删查改由 `database.py`（`add_to_user_whitelist`、`get_user_whitelist`）负责，`config.py` 只做「把两边合成一份」这一件事。
 
 **被哪些模块调用：**
 - `classifier.py` 调用 `get_all_whitelist_domains()`、`AD_KEYWORDS`、`SENSITIVE_KEYWORDS`、`SUSPICIOUS_SENDER_KEYWORDS`
-- `main.py` 调用 `add_to_user_whitelist()`、`load_user_whitelist()` 用于白名单管理命令
+- `main.py` 的 `cmd_whitelist` 调用 `database.add_to_user_whitelist()` / `database.get_user_whitelist()`；只在打印输出时用到 `config.WHITELIST_DOMAINS` / `config.get_all_whitelist_domains()`
 
 **依赖：**
-- 标准库：`json`、`os`
-- 不依赖任何其他本地模块（最底层）
+- 标准库：`os`
+- 运行时懒加载 `database`（避免底层模块间循环依赖）
 
 ---
 
@@ -52,12 +51,13 @@
 | `get_gmail_service()` | 调用 `authenticate()`，返回 Gmail API 服务对象 |
 
 **`authenticate()` 内部流程：**
-1. 检查 `credentials.json` 是否存在，不存在则提示并退出
-2. 检查 `token.json` 是否存在，存在则加载
-3. 若令牌有效，直接返回
-4. 若令牌过期但有刷新令牌，自动刷新
-5. 若无有效令牌，启动浏览器授权（`InstalledAppFlow`）
-6. 授权成功后，将新令牌保存到 `token.json`
+1. 检查 `credentials.json` 是否存在，不存在则提示退出（提示里指向 `docs/USAGE_GUIDE.md`）
+2. 首次加载时会兜底把 `credentials.json` 权限收紧到 `0o600`
+3. 检查 `token.json` 是否存在，存在则加载
+4. 若令牌有效，直接返回
+5. 若令牌过期但有刷新令牌，自动刷新
+6. 若无有效令牌，启动浏览器授权（`InstalledAppFlow`）
+7. 授权成功后，用 `os.open(..., O_CREAT|O_WRONLY|O_TRUNC, 0o600)` 写入 `token.json`，并追加 `os.chmod(..., 0o600)` 作为兜底
 
 **被哪些模块调用：**
 - `main.py` 在每个需要访问 Gmail 的命令开始时调用 `get_gmail_service()`
@@ -96,6 +96,7 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 - 并发线程数 `CONCURRENT_WORKERS = 3`，每请求间隔 `REQUEST_SLEEP = 0.15s`，约 20 req/s
 - 每 50 封邮件打印一次进度
 - 自动退避重试：429（限流）、500 / 503（服务端错误）、`ssl.SSLError` / `ConnectionError` / `OSError`（网络抖动）
+- 单封邮件重试 `MAX_RETRIES = 3` 次仍失败时会写 WARNING 日志（含邮件 ID 和最后一次状态码），避免静默丢邮件
 
 **已退订发件人过滤：** 解析完成后调用 `database.is_already_unsubscribed(sender_email)`，命中的直接过滤，避免重复处理。
 
@@ -182,7 +183,7 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
         },
         ...
     ],
-    "skipped": 120,  # 被白名单/敏感词保护跳过的邮件数
+    "skipped": 120,  # 未被建议退订的邮件数（白名单、敏感词、非广告等都算在里面）
 }
 ```
 
@@ -255,7 +256,9 @@ openai、anthropic、minimax、deepseek、moonshot、qwen、zhipu、ollama、cus
 - `anthropic`（Python SDK，同时兼容 MiniMax 的 Anthropic 端点）
 - `openai`（Python SDK，用于 OpenAI 兼容提供商）
 - 本地模块：`config`（`USE_AI_CLASSIFIER` / `AI_MAX_TOKENS`）、`user_config`（活跃提供商 & Key）
-- 标准库：`json`、`logging`、`os`、`re`
+- 标准库：`json`、`logging`、`re`
+
+**日志脱敏：** 异常分支里的 `logger.warning(...)` 会通过模块内 `_mask_secrets()` 对 `sk-...` / `pk-...` / `api_key...` 等长字符串做正则遮蔽（替换为 `[REDACTED]`），避免 API Key 被意外写进 `logs/*.log`。
 
 ---
 
@@ -264,8 +267,9 @@ openai、anthropic、minimax、deepseek、moonshot、qwen、zhipu、ollama、cus
 **职责：** 用 SQLite 本地文件记账——谁退订过了、什么时候退订的、成功还是失败。就像给每次退订动作留个签到记录，下次扫描时自动跳过已处理过的发件人，避免重复打扰对方。
 
 **数据存储：**
-- 文件位置：项目根目录下 `unsubscribe_history.db`（SQLite）
+- 文件位置：项目根目录下 `gmail-unsubscriber.db`（SQLite）
 - 不上传 git（在 `.gitignore` 中）
+- `init_db()` 结束时会 `os.chmod(DB_PATH, 0o600)`，避免扫描过的发件人列表（PII）被其他用户读到
 
 **关键函数：**
 
@@ -312,11 +316,12 @@ openai、anthropic、minimax、deepseek、moonshot、qwen、zhipu、ollama、cus
 | 函数名 | 说明 |
 |--------|------|
 | `get_list_unsubscribe_url(headers_or_value)` | 解析 List-Unsubscribe 头部，提取 HTTP URL 和 mailto |
-| `unsubscribe_via_one_click(url)` | 发送 RFC 8058 POST 请求执行一键退订 |
-| `unsubscribe_via_mailto(mailto_info)` | 生成 mailto 退订信息（地址和主题） |
-| `unsubscribe_via_link(html_body)` | 从 HTML 正文提取退订链接并发 GET 请求 |
+| `unsubscribe_via_one_click(url)` | 发送 RFC 8058 POST 请求执行一键退订（进入前检查 `_is_safe_http_url`） |
+| `unsubscribe_via_mailto(mailto_info)` | 通过 Gmail API 发送退订邮件，异常日志会遮蔽 `sk-*` / `Bearer` 等 |
+| `unsubscribe_via_link(html_body)` | 从 HTML 正文提取退订链接并发 GET 请求（同样检查 scheme） |
 | `execute_unsubscribe(sender_group, dry_run)` | 统一入口，按优先级尝试各种退订方式 |
-| `_find_unsubscribe_link(html_body)` | 从 HTML 中提取最可能的退订链接（内部函数） |
+| `_find_unsubscribe_link(html_body)` | 从 HTML 中提取最可能的退订链接（仅接受 `http(s)` 的 `href`） |
+| `_is_safe_http_url(url)` | URL scheme 白名单：只放行 `http://` / `https://`，其他（`javascript:` / `file:` / `data:` / `mailto:` 等）一律拒绝 |
 
 **`execute_unsubscribe()` 返回结构：**
 ```python

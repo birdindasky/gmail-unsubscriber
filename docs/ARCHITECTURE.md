@@ -168,11 +168,13 @@ main.py
 
 | 风险 | 缓解措施 |
 |------|---------|
-| OAuth 令牌泄露 | token.json 在 .gitignore 中，不上传 git |
-| 误退订重要邮件 | 白名单 + 敏感词双重保护 + 2条件门槛 |
+| OAuth 令牌泄露 | `token.json` 在 `.gitignore` 中；落盘即 `chmod 0o600`，仅当前用户可读写 |
+| 误退订重要邮件 | 白名单 + 敏感词双重保护 + 2 条件门槛 |
 | 广告链接追踪 | 使用 List-Unsubscribe 头部而非正文链接（优先） |
-| 账号凭据泄露 | credentials.json 在 .gitignore 中，不上传 git |
-| 误操作 | --dry-run 模式 + --confirm 逐个确认模式 |
-| 速率限制 | scanner 和 unsubscriber 均有请求间隔和重试机制（429/500/503/SSL/网络错误指数退避） |
-| AI API Key 泄露 | 存入 `user_config.json`（已加入 `.gitignore`），不写入代码；展示时脱敏（前6位+后6位） |
+| 恶意退订链接（scheme 滥用） | `unsubscriber._is_safe_http_url()` 仅放行 `http://` / `https://`，拒绝 `javascript:` / `file:` / `data:` / `mailto:` 等 |
+| 账号凭据泄露 | `credentials.json` 在 `.gitignore` 中；首次加载时自动 `chmod 0o600` |
+| 本地数据库 PII 外泄 | `gmail-unsubscriber.db`（含扫描过的发件人邮箱）在 `init_db()` 后 `chmod 0o600` |
+| 误操作 | `--dry-run` 模式 + `--confirm` 逐个确认模式 |
+| 速率限制 | scanner 和 unsubscriber 均有请求间隔和重试机制（429/500/503/SSL/网络错误指数退避）；单封邮件重试 3 次仍失败时写 WARNING 日志而非静默跳过 |
+| AI API Key 泄露 | 存入 `user_config.json`（已加入 `.gitignore`），不写入代码；展示时脱敏（前 6 位 + 后 6 位）；异常日志里的 `sk-...` / `pk-...` / `Bearer ...` 等会被 `_mask_secrets()` 遮蔽为 `[REDACTED]` |
 | AI 接口泄露邮件内容 | 只发送发件人、主题、摘要片段，不发送邮件正文 |
