@@ -942,7 +942,7 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("--full-scan", action="store_true",
                              help="在 --days 0 --all 下关闭默认保护上限，执行完整扫描")
     scan_parser.add_argument("--no-ai", action="store_true", dest="no_ai",
-                             help="不使用 Claude AI 辅助判断")
+                             help="不使用 AI 辅助判断")
     scan_parser.set_defaults(func=cmd_scan)
 
     # ── unsubscribe ──
@@ -956,7 +956,7 @@ def build_parser() -> argparse.ArgumentParser:
     unsub_parser.add_argument("--full-scan", action="store_true",
                               help="在 --days 0 --all 下关闭默认保护上限，执行完整扫描")
     unsub_parser.add_argument("--no-ai", action="store_true", dest="no_ai",
-                              help="不使用 Claude AI 辅助判断")
+                              help="不使用 AI 辅助判断")
     unsub_parser.add_argument("--archive", action="store_true",
                               help="退订成功后归档该发件人的旧邮件")
     unsub_mode = unsub_parser.add_mutually_exclusive_group(required=True)

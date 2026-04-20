@@ -51,7 +51,7 @@ def authenticate() -> Credentials:
     if not os.path.exists(CREDENTIALS_FILE):
         logger.error("找不到 credentials.json，请先从 Google Cloud Console 下载")
         print("\n❌ 错误：找不到 credentials.json 文件")
-        print("   请参考 docs/USAGE.md 中的「Google Cloud Console 配置步骤」")
+        print("   请参考 docs/USAGE_GUIDE.md 中的「Google Cloud Console 配置步骤」")
         print(f"   将文件放置于：{CREDENTIALS_FILE}")
         sys.exit(1)
 
