@@ -1,3 +1,24 @@
+## Status
+
+Completed 2026-04-20. All 10 tasks applied and committed. Test baseline 80 → 94 (14 new tests added, all green).
+
+| # | Task | Commit |
+|---|------|--------|
+| 1 | chmod 600 on token.json + credentials.json | `6becbff` |
+| 2 | chmod 600 on SQLite db after init | `312ed88` |
+| 3 | Scanner log exhausted retries + None-guard | `fa37871` |
+| 4 | Fix dead whitelist branch + drop bogus TLD tokens | `5caa7dd` |
+| 5 | Rename misleading "skipped" label | `2814a1a` |
+| 6 | Drop dead JSON whitelist fallback | `662076e` |
+| 7 | Drop unused imports + simplify token set | `62d979d` |
+| 8 | Fix doc path + generalize AI help text | `6837a58` |
+| 9 | Mask API key patterns in exception logs | `414f66d` |
+| 10 | Reject non-http(s) unsubscribe URLs | `a0014e0` |
+
+Execution note: Codex applied Task 1's `auth.py` edit but could not commit due to a sandbox denial on `.git/` writes; remaining edits and all commits were made directly by Claude in-session. The original Codex blocker is therefore resolved, not outstanding.
+
+---
+
 # Gmail Unsubscriber — 2026-04-20 Review Fixes Plan
 
 > **For Codex (execution agent):** Apply each task below in order. For every task: read the file, make the edit, run the listed verification, and only advance once it passes. Tests must all pass at the end. Use `python -m pytest` from the project venv.
