@@ -27,6 +27,11 @@ logs/*.log
 .AppleDouble
 .LSOverride
 
+# 本地开发杂物（备份、临时、旧 venv）
+.gitignore.save
+.codex-tmp/
+venv-py39-backup/
+
 # IDE 配置
 .idea/
 .vscode/
