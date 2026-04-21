@@ -30,6 +30,7 @@ logs/*.log
 # 本地开发杂物（备份、临时、旧 venv）
 .gitignore.save
 .codex-tmp/
+.codex-sandbox-check-*/
 venv-py39-backup/
 
 # IDE 配置
