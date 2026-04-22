@@ -1,41 +1,43 @@
-# Gmail 智能退订器
+# Gmail Unsubscriber
 
-自动识别并退订 Gmail 中的商业广告邮件，同时安全跳过重要邮件（银行、政府、医疗、工作等）。
+**English** | [中文](./README_zh.md)
 
-## 🛡️ 安全特性
+Automatically identify and unsubscribe from promotional emails in Gmail, while safely skipping important senders (banks, government, medical, work, etc.).
 
-- **白名单优先**：银行、Google、政府、医疗等重要发件人一律跳过
-- **默认 dry-run**：所有操作先预览再执行，不会误退订
-- **不删除邮件**：只退订，不动收件箱
-- **逐个确认**：默认逐个确认每个发件人
-- **全历史保护**：`--days 0 --all` 默认只处理前 `2000` 封，避免误跑整箱
+## 🛡️ Safety Features
 
-> 💻 **支持平台**：Mac / Linux / Windows / WSL2，全平台通用。Windows 原生和 WSL2 的命令差异详见 [USAGE_GUIDE.md](./docs/USAGE_GUIDE.md#2-首次配置只需做一次)。
+- **Whitelist first**: banks, Google, government, medical, and other critical senders are always skipped
+- **Dry-run by default**: every operation previews before executing — no accidental unsubscribes
+- **Never deletes emails**: unsubscribes only; your inbox stays untouched
+- **One-by-one confirmation**: each sender is confirmed before action (by default)
+- **Full-history safety cap**: `--days 0 --all` processes only the first `2000` messages unless you opt in, so you never accidentally scan an entire mailbox
 
-## 🚀 4 步快速启动
+> 💻 **Platforms**: Mac / Linux / Windows / WSL2 — fully cross-platform. See [USAGE_GUIDE.md](./docs/USAGE_GUIDE.md) for platform-specific command differences between native Windows and WSL2.
+
+## 🚀 Four-Step Quick Start
 
 ```bash
-# 1. 进入项目目录
+# 1. Enter the project directory
 cd /path/to/gmail-unsubscriber
 
-# 2. 创建虚拟环境并安装依赖
+# 2. Create a virtual environment and install dependencies
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 3. 获取 Google OAuth 凭证
-# 参考 docs/USAGE_GUIDE.md 完成 Google Cloud Console 配置
-# 将 credentials.json 放入项目根目录
+# 3. Obtain Google OAuth credentials
+# Follow docs/USAGE_GUIDE.md to complete Google Cloud Console setup
+# Place credentials.json in the project root
 
-# 4. 首次运行（会弹出浏览器授权）
+# 4. First run (opens a browser for authorization)
 python3 main.py
 ```
 
-## 🔧 运行环境
+## 🔧 Runtime Environment
 
-- 推荐 `Python 3.10+`
-- 测试依赖在 `requirements-dev.txt`
-- 如果本机默认 `python3` 里没有 `pytest`，请先激活项目虚拟环境再执行测试
+- `Python 3.10+` recommended
+- Test dependencies live in `requirements-dev.txt`
+- If your system-wide `python3` doesn't have `pytest`, activate the project's virtual environment before running tests:
 
 ```bash
 source venv/bin/activate
@@ -43,68 +45,68 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-## 📖 两种使用方式
+## 📖 Two Ways to Use
 
-### 方式一：交互式菜单（推荐新手）
+### Option 1: Interactive Menu (recommended for beginners)
 
-直接运行，跟着菜单操作：
+Run the tool without any arguments and follow the menu:
 
 ```bash
 python3 main.py
 ```
 
-菜单会引导你完成扫描、按类别退订、管理白名单等操作。
+The menu walks you through scanning, unsubscribing by category, managing the whitelist, and more.
 
-### 方式二：命令行参数（高级用户）
+### Option 2: Command-Line Arguments (power users)
 
 ```bash
-python3 main.py scan                              # 扫描最近 30 天
-python3 main.py scan --days 0                     # 扫全部历史促销邮件
-python3 main.py scan --days 0 --all               # 扫全部历史邮件（默认保护到前 2000 封）
-python3 main.py scan --days 0 --all --max-messages 500  # 全历史先抽样 500 封
-python3 main.py scan --days 0 --all --full-scan   # 明确执行全历史完整扫描
-python3 main.py unsubscribe --dry-run             # 预览退订
-python3 main.py unsubscribe --confirm             # 逐个确认退订
-python3 main.py unsubscribe --confirm --auto      # 自动退订全部
+python3 main.py scan                                    # Scan the last 30 days
+python3 main.py scan --days 0                           # Scan all historical promotional emails
+python3 main.py scan --days 0 --all                     # Scan all categories, full history (capped at first 2000)
+python3 main.py scan --days 0 --all --max-messages 500  # Sample 500 emails across full history
+python3 main.py scan --days 0 --all --full-scan         # Explicit full-history scan (no cap)
+python3 main.py unsubscribe --dry-run                   # Preview unsubscribes
+python3 main.py unsubscribe --confirm                   # Confirm each sender one by one
+python3 main.py unsubscribe --confirm --auto            # Auto-unsubscribe all suggestions
 ```
 
-## 📌 推荐用法
+## 📌 Recommended Usage
 
-- 日常清理：`python3 main.py scan --days 30 --no-ai`
-- 历史促销清理：`python3 main.py scan --days 0 --no-ai`
-- 全邮箱排查先抽样：`python3 main.py scan --days 0 --all --max-messages 500 --no-ai`
-- 只有在您明确要扫完整个邮箱时，再加：`--full-scan`
+- Daily cleanup: `python3 main.py scan --days 30 --no-ai`
+- Historical promotions cleanup: `python3 main.py scan --days 0 --no-ai`
+- Full-mailbox sampling first: `python3 main.py scan --days 0 --all --max-messages 500 --no-ai`
+- Only add `--full-scan` when you explicitly want to scan the entire mailbox
 
-**时间预期（经验值，具体取决于网络和邮箱规模）：**
-- 扫描 1 万封邮件通常需要十几分钟，退订阶段再加几分钟
-- `--all` 比只扫促销标签明显更慢，建议先 `--max-messages 500` 抽样
-- 实际时间受网络质量、Gmail API 限流、AI 提供商响应速度影响，差异可能在 2~3 倍区间
+**Rough time estimates (actual numbers depend on network and mailbox size):**
+- Scanning ~10,000 emails typically takes around 10–15 minutes; the unsubscribe stage adds a few more minutes
+- `--all` is noticeably slower than scanning just the promotions label — sample with `--max-messages 500` first
+- Real-world times vary 2–3× depending on network quality, Gmail API rate limits, and AI provider latency
 
-## 🤖 AI 支持
+## 🤖 AI Support
 
-支持 9 家 AI 提供商（8 家内置 + 1 个自定义兜底），通过菜单交互式配置（无需改环境变量）：
+Nine AI providers supported (eight built-in + one custom fallback), all configured interactively through the menu — no need to edit environment variables:
 
-**直接运行 → 菜单 → 5. 设置 → 1. 配置 AI 提供商**，30 秒搞定。
+**Just run → menu → `5. Settings` → `1. Configure AI Provider`**. Takes about 30 seconds.
 
-内置支持：**OpenAI、Anthropic Claude、MiniMax、DeepSeek、Moonshot(Kimi)、通义千问、智谱 GLM、Ollama**，以及任何 OpenAI 兼容接口（自定义入口）。
+Built-in: **OpenAI, Anthropic Claude, MiniMax, DeepSeek, Moonshot (Kimi), Qwen (Tongyi), Zhipu GLM, Ollama**, plus any OpenAI-compatible API (custom entry).
 
-- 配置保存在 `user_config.json`（已加入 `.gitignore`）
-- 同一发件人只调用一次 AI（结果缓存到运行结束），节省费用
-- 首次启动会自动从环境变量迁移老配置，无感升级
-- 未配置 AI 时自动跳过，不影响基本功能
+- Config is saved to `user_config.json` (already in `.gitignore`)
+- Each sender triggers the AI at most once — results are cached for the run, saving cost
+- On first launch, legacy environment-variable configs are migrated automatically
+- If no AI is configured, it's simply skipped — core features still work
 
-## 📖 文档
+## 📖 Documentation
 
-- [完整使用手册](./docs/USAGE_GUIDE.md) - 首次配置、所有命令、AI 配置、常见问题（最详细）
-- [命令速查表](./docs/USAGE.md) - 常用命令一页纸速查
-- [架构设计](./docs/ARCHITECTURE.md) - 设计与思路
-- [文件说明](./docs/FILE_OVERVIEW.md) - 代码结构
+- [Full user guide](./docs/USAGE_GUIDE.md) — first-time setup, every command, AI configuration, and FAQ (most detailed)
+- [Command cheat sheet](./docs/USAGE.md) — common commands on one page
+- [Architecture](./docs/ARCHITECTURE.md) — design and reasoning
+- [File overview](./docs/FILE_OVERVIEW.md) — code structure
 
-## ⚠️ 安全提示
+## ⚠️ Safety Notes
 
-1. **默认是预览模式**：`--dry-run` 不会真正退订
-2. **白名单机制**：重要邮件不会被退订
-3. **不删除任何邮件**：退订和删除是独立操作
-4. **OAuth 安全**：使用 Gmail API 而非 IMAP 密码
-5. **全历史全邮箱默认保护**：`--days 0 --all` 默认只处理前 `2000` 封；如需完整扫描，必须显式加 `--full-scan`
-6. **本地凭据文件权限收紧**：`token.json`、`credentials.json`、`gmail-unsubscriber.db` 均自动设置为 `0o600`（仅当前用户可读写），日志里的 API Key 会被遮蔽，退订链接仅接受 `http(s)` 协议
+1. **Dry-run is the default**: `--dry-run` never actually unsubscribes
+2. **Whitelist protection**: important emails are never unsubscribed
+3. **No emails are deleted**: unsubscribing and deleting are independent operations
+4. **OAuth-based security**: uses the Gmail API, not IMAP passwords
+5. **Full-mailbox opt-in**: `--days 0 --all` processes only the first `2000` messages unless you explicitly add `--full-scan`
+6. **Local credential hardening**: `token.json`, `credentials.json`, and `gmail-unsubscriber.db` are automatically set to `0o600` (current-user read/write only); API keys in logs are masked; unsubscribe links are restricted to `http(s)` schemes

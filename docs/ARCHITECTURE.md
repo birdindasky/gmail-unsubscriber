@@ -1,180 +1,183 @@
-# 系统架构文档
+# System Architecture
 
-## 整体架构图
+## Overall Architecture Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     用户 (命令行 / 交互菜单)                      │
+│                  User (CLI / Interactive Menu)                   │
 │    python main.py  ·  scan / unsubscribe / whitelist / history   │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                         main.py                                  │
-│    CLI 解析 · 交互菜单 · 日志初始化 · 扫描结果缓存 · 流程调度     │
+│  CLI parsing · interactive menu · logging init · scan cache ·    │
+│                     workflow orchestration                       │
 └──┬────────┬──────────┬──────────────────┬──────────────┬────────┘
    │        │          │                  │              │
    ▼        ▼          ▼                  ▼              ▼
 ┌─────┐ ┌────────┐ ┌───────────┐   ┌──────────────┐ ┌──────────┐
 │auth │ │scanner │ │ classifier│   │ unsubscriber │ │ database │
 │ .py │ │ .py    │ │  .py      │   │  .py         │ │  .py     │
-│OAuth│ │3 线程并│ │白名单/广告│   │三种退订方式  │ │SQLite 持 │
-│认证 │ │发 + 重试│ │敏感词判断│   │HTTP/mailto/  │ │久化：已退│
-│     │ │Gmail API│ │+ AI 辅助 │   │  正文链接    │ │订 + 历史 │
+│OAuth│ │3-thread│ │whitelist/ │   │3 unsubscribe │ │SQLite    │
+│auth │ │concurr.│ │ad & sens. │   │methods: HTTP/│ │persist:  │
+│     │ │+ retry │ │keyword    │   │mailto/body   │ │unsub'd + │
+│     │ │Gmail API│ │+ AI assist│   │  link        │ │history   │
 └──┬──┘ └───┬────┘ └─────┬─────┘   └──────┬───────┘ └────┬─────┘
    │        │            │                │              │
    │        │            ▼                │              │
    │        │   ┌─────────────────┐       │              │
    │        │   │ ai_classifier.py│       │              │
-   │        │   │ 9 提供商注册表  │       │              │
-   │        │   │ 2 层缓存防重复  │       │              │
+   │        │   │ 9-provider reg. │       │              │
+   │        │   │ 2-layer cache   │       │              │
    │        │   └────────┬────────┘       │              │
    │        │            │                │              │
    │        ▼            ▼                ▼              │
    │     ┌─────────────────────────────────────┐         │
    └────▶│           config.py                 │◀────────┘
-         │ 白名单/关键词/域名分类/USE_AI_CLASSIFIER │
+         │ whitelist/keywords/domain cats/     │
+         │           USE_AI_CLASSIFIER         │
          └─────────────────────────────────────┘
 ```
 
-## 数据流向
+## Data Flow
 
 ```
-Gmail 服务器
+Gmail server
     │
-    │ Gmail API (OAuth 2.0 认证)
+    │ Gmail API (OAuth 2.0 auth)
     ▼
 scanner.scan_emails()
-    │ 3 线程并发拉取 metadata，遇 429/SSL 自动重试
-    │ database.is_already_unsubscribed() 过滤已退订发件人
-    │ 返回邮件列表（主题/发件人/头部/Gmail 标签）
+    │ 3-thread concurrent metadata fetch, auto retry on 429/SSL
+    │ database.is_already_unsubscribed() filters already-unsubscribed senders
+    │ returns email list (subject/sender/headers/Gmail labels)
     ▼
 classifier.classify_emails()
     │
-    ├─ is_whitelisted()         → 白名单域名      → 跳过
-    ├─ is_sensitive()           → 敏感关键词      → 跳过
-    ├─ is_advertisement()       → ≥ 2 条件命中    → 标记退订
-    └─ 恰好 1 条件命中 → ai_classifier.classify_with_ai()
-                         （同发件人只调一次，缓存在 _ai_cache）
+    ├─ is_whitelisted()         → whitelisted domain  → skip
+    ├─ is_sensitive()           → sensitive keyword   → skip
+    ├─ is_advertisement()       → ≥ 2 criteria hit    → mark for unsubscribe
+    └─ exactly 1 criterion hit  → ai_classifier.classify_with_ai()
+                                  (called once per sender, cached in _ai_cache)
     │
-    │ 返回按发件人归组的待退订列表
+    │ returns list grouped by sender
     ▼
 classifier.categorize_groups()
-    │ 按域名归类（电商/新闻/社交…）
-    │ 未知域名 → ai_classifier.categorize_with_ai()
-    │         （同域名只调一次，缓存在 domain_cat_cache）
+    │ groups by domain (e-commerce/news/social/…)
+    │ unknown domain → ai_classifier.categorize_with_ai()
+    │                  (called once per domain, cached in domain_cat_cache)
     ▼
-main._last_scan 缓存结果（交互菜单复用）
+main._last_scan caches the result (reused by interactive menu)
     ▼
 unsubscriber.execute_unsubscribe()
     │
-    ├─ 方式1: List-Unsubscribe POST (RFC 8058 一键退订)
-    ├─ 方式2: List-Unsubscribe mailto (发送退订邮件)
-    └─ 方式3: 解析 HTML 正文，提取退订链接，发 GET 请求
+    ├─ Method 1: List-Unsubscribe POST (RFC 8058 one-click unsubscribe)
+    ├─ Method 2: List-Unsubscribe mailto (send unsubscribe email)
+    └─ Method 3: parse HTML body, extract unsubscribe link, send GET request
     │
     ▼
-database 写入历史 · 打印结果 · 写入日志文件
+database writes history · prints result · writes to log file
 ```
 
 ---
 
-## 架构决策说明
+## Architecture Decisions
 
-### 为什么使用 Gmail API，而不是直接读取邮件文件？
+### Why use the Gmail API instead of reading email files directly?
 
-直接处理 `.eml` 文件或通过 IMAP 读取邮件，需要存储账号密码，存在安全隐患。Gmail API 使用 OAuth 2.0 协议——就像让快递员进门取件，你给他一把只能开指定房间的钥匙（令牌），而不是把家门钥匙给他。令牌有过期时间，即使泄露危害也有限，而且随时可以在 Google 账号设置中吊销。
+Processing `.eml` files directly or reading email via IMAP requires storing account passwords, which is a security risk. The Gmail API uses OAuth 2.0 — it's like letting a courier into your home with a key that only opens one specific room (a token), rather than handing them your front door key. Tokens expire, so even if one leaks the damage is limited, and you can revoke them at any time from your Google account settings.
 
-### 为什么采用「白名单优先」策略？
+### Why use a "whitelist-first" strategy?
 
-银行验证码、医院就诊提醒、政府通知……这些邮件千万不能误退订。白名单相当于一道「免检通道」：哪怕邮件长得再像广告，只要发件人在白名单里，一律放行。错退订一次重要邮件，后果可能很严重（错过还款通知、丢失验证码）；多收几封广告邮件，只是稍微烦人而已。宁可漏掉广告，绝不误伤重要邮件。
+Bank verification codes, hospital appointment reminders, government notices… these emails must never be mistakenly unsubscribed. The whitelist acts as an "exempt lane": no matter how much an email looks like an ad, if the sender is on the whitelist, it passes through. Wrongly unsubscribing from one important email can have serious consequences (missing a payment reminder, losing a verification code); receiving a few more ads is just mildly annoying. Better to miss some ads than to harm an important email.
 
-### 为什么判定广告需要满足「2 个或以上」条件？
+### Why does ad classification require "2 or more" criteria to match?
 
-单一条件太容易误判：
-- 仅凭「含有"优惠"二字」→ 银行也会发"优惠利率"通知
-- 仅凭「发件人是 noreply」→ GitHub 通知也是 noreply
-- 仅凭「有 List-Unsubscribe」→ 这是一个正当的邮件头部
+A single criterion is too easy to get wrong:
+- Just "contains the word 'discount'" (e.g., `优惠` in Chinese) → banks also send "preferential rate" (`优惠利率`) notices
+- Just "sender is noreply" → GitHub notifications are also from noreply
+- Just "has List-Unsubscribe" → that's a legitimate email header
 
-需要多个特征同时出现，才能确信这封邮件是广告。就像判断一个人是不是骗子，一个可疑点不够，需要几个特征叠加才能下结论。
+Multiple signals must appear together before we can be confident that an email is an ad. It's like deciding whether someone is a scammer — one suspicious point isn't enough; several signals need to stack up before you draw a conclusion.
 
-### 为什么按发件人分组处理，而不是逐封处理？
+### Why process by sender groups instead of email by email?
 
-同一个广告发件人可能给你发了 100 封邮件。退订一次就能解决全部问题，没必要对同一个发件人发 100 次退订请求（那反而可能触发对方的反爬机制）。按发件人分组后，只需退订一次，且用户界面也更清晰——「退订这个发件人」比「退订这 100 封邮件」更符合用户的心智模型。
+The same advertiser may have sent you 100 emails. A single unsubscribe action solves the whole problem — there's no need to send 100 unsubscribe requests to the same sender (which could actually trigger their anti-scraping defenses). Grouping by sender means one unsubscribe is enough, and the UI is clearer too — "unsubscribe from this sender" fits a user's mental model better than "unsubscribe from these 100 emails".
 
-### 为什么优先使用 List-Unsubscribe，而不是直接点击邮件中的链接？
+### Why prefer List-Unsubscribe over clicking links in the email body?
 
-`List-Unsubscribe` 是 RFC 2369 和 RFC 8058 定义的标准邮件头部，是发件人「官方公告」的退订方式。正规邮件服务商（Mailchimp、SendGrid 等）都支持它，且通常是幂等的（多次请求结果相同）。相比之下，邮件正文中的退订链接：
-1. 可能只是收集「真实用户」的追踪链接
-2. 可能跳转到需要填写验证码的页面
-3. 可能链接失效
+`List-Unsubscribe` is the standard email header defined in RFC 2369 and RFC 8058 — the sender's "official" unsubscribe mechanism. Reputable email service providers (Mailchimp, SendGrid, etc.) all support it, and it's typically idempotent (repeated requests give the same result). By comparison, unsubscribe links in the email body:
+1. May simply be tracking links designed to identify "real users"
+2. May redirect to a page that asks you to fill in a CAPTCHA
+3. May be broken
 
-所以优先级：RFC 8058 POST → List-Unsubscribe HTTP → List-Unsubscribe mailto → 正文链接。
+So the priority order is: RFC 8058 POST → List-Unsubscribe HTTP → List-Unsubscribe mailto → body link.
 
-### 为什么支持 9 个 AI 提供商？
+### Why support 9 AI providers?
 
-不同用户有不同需求：国内用户希望低延迟低费用（MiniMax、DeepSeek、通义千问、智谱、Moonshot），有海外网络的用户可以选 OpenAI 或 Anthropic Claude，本地部署用户可以用 Ollama，还有自定义入口兜底任何 OpenAI 兼容服务。`ai_classifier.py` 里维护一个 `PROVIDERS` 注册表（9 条目），每条记录协议类型（`openai` 或 `anthropic`）、默认模型、base_url 等；`_call_ai()` 按协议分发到对应 SDK，接入新提供商只需在注册表加一行。
+Different users have different needs: mainland Chinese users want low latency and low cost (MiniMax, DeepSeek, Qwen, Zhipu, Moonshot); users with international network access can pick OpenAI or Anthropic Claude; users running locally can use Ollama; and a custom endpoint serves as a fallback for any OpenAI-compatible service. `ai_classifier.py` maintains a `PROVIDERS` registry (9 entries), each recording the protocol type (`openai` or `anthropic`), default model, base_url, etc.; `_call_ai()` dispatches by protocol to the corresponding SDK, and adding a new provider only requires adding one row to the registry.
 
-AI 提供商选择和 API Key 不再放 `config.py` / 环境变量，改为存入 `user_config.json`（由 `user_config.py` 管理，已加入 `.gitignore`），通过交互菜单配置，首次启动会自动从旧环境变量迁移。
+AI provider selection and API keys are no longer stored in `config.py` or environment variables. They're now kept in `user_config.json` (managed by `user_config.py`, already in `.gitignore`), configured through the interactive menu, with automatic migration from legacy environment variables on first launch.
 
-MiniMax 的 M 系列是推理模型，响应可能只返回 `ThinkingBlock` 而没有独立的 `TextBlock`，因此 `_extract_text_from_response()` 做了 fallback：先找 `text`，找不到再从 `thinking` 里用正则抠 JSON。
+MiniMax's M-series are reasoning models, and a response may contain only a `ThinkingBlock` without a standalone `TextBlock`. For this reason, `_extract_text_from_response()` has a fallback: it first looks for `text`, and if not found, it uses a regex to pull JSON out of `thinking`.
 
-### 为什么 AI 判定要按「发件人 + 域名」双层缓存？
+### Why cache AI decisions in two layers (sender + domain)?
 
-同一个广告发件人可能有上百封邮件，每封都问一次 AI 既慢又费钱。第一层 `_ai_cache` 按 `sender_email` 缓存"这个发件人是不是广告"；第二层 `domain_cat_cache` 按 `sender_domain` 缓存"这个域名属于什么类别"。实测 1 万封邮件通常只触发几十到几百次 AI 调用，绝大多数走缓存。缓存只在进程内存里（一次运行有效），下次运行重新算，避免误判被永久固化。
+The same advertiser may have hundreds of emails, and asking the AI about every one is both slow and expensive. The first layer, `_ai_cache`, keys on `sender_email` to cache "is this sender an advertiser?". The second layer, `domain_cat_cache`, keys on `sender_domain` to cache "what category does this domain belong to?". In testing, 10,000 emails typically trigger only tens to hundreds of AI calls — the vast majority hit the cache. Caches live only in process memory (valid for a single run) and are recomputed on the next run, so any misclassification isn't permanently locked in.
 
-### 为什么扫描用 3 线程并发、而不是更多？
+### Why scan with 3 concurrent threads rather than more?
 
-Gmail API 单用户并发有隐性上限，超过会触发 429 限流。3 线程配合每请求 0.15 秒间隔，约 20 req/s，是实测"又快又稳"的平衡点。每个线程维护自己的 `Gmail service` 对象（`thread_local`），避免线程间共享带来的 SSL/连接池问题。拉取 metadata 失败会自动重试（429、500、503、SSL、网络错误），在代理不稳的环境下也能跑完大规模扫描。
+The Gmail API has an implicit per-user concurrency limit, and exceeding it triggers 429 rate limiting. Three threads with a 0.15-second per-request interval work out to around 20 req/s, which testing shows to be the sweet spot for "fast and stable". Each thread keeps its own `Gmail service` object (via `thread_local`), avoiding SSL and connection-pool issues that come with cross-thread sharing. Metadata fetch failures retry automatically (429, 500, 503, SSL, network errors), so large scans complete even over unstable proxies.
 
-### 为什么扫描结果要缓存到 `_last_scan`？
+### Why cache scan results in `_last_scan`?
 
-交互菜单场景下，用户常常是"先扫一眼 → 决定退订"两步操作。如果每步都重新扫描（尤其是 14000+ 封历史邮件），体验会崩溃。`main._last_scan` 在一次运行里保留上次扫描的分类结果，退订时默认复用，用户也可以主动重扫。命令行模式（`scan` / `unsubscribe` 各自独立）仍保持原来的行为，互不干扰。
+In the interactive menu flow, users typically go "take a look → decide to unsubscribe" as two steps. Re-scanning on each step (especially across 14,000+ historical emails) would be a terrible experience. `main._last_scan` keeps the previous scan's classification results within a single run and reuses them by default when unsubscribing; users can also trigger a fresh scan manually. CLI mode (`scan` / `unsubscribe` as independent commands) retains its original behavior, so the two don't interfere.
 
-### 为什么设计试运行（dry-run）模式？
+### Why a dry-run mode?
 
-防止手误。就像在真正删除数据库之前先运行 `SELECT` 查一查，试运行让用户先看到「如果执行，会发生什么」，确认没问题再真正动手。对于不熟悉技术的用户尤其重要——先用 `--dry-run` 看看结果，觉得合理了再用 `--confirm` 执行。
+To prevent mistakes. Just like running `SELECT` before actually deleting rows from a database, dry-run lets users see "what would happen if this ran" and confirm before actually doing it. It's especially important for non-technical users — run `--dry-run` first, check the results look reasonable, then re-run with `--confirm`.
 
-### 为什么不直接删除邮件？
+### Why not just delete the emails?
 
-退订只是「告诉对方不要再发」，不是「清理已有邮件」。删除邮件是破坏性操作，无法撤销。万一程序判断失误，删除了重要邮件，用户可能损失重要信息。退订操作只会影响「未来」，不影响「过去」——这是最保守、最安全的策略。用户如果想清理已有广告邮件，可以在 Gmail 界面手动操作。
+Unsubscribing only tells the sender "stop sending me more"; it's not about cleaning up emails you've already received. Deleting emails is destructive and irreversible. If the program ever misjudges and deletes an important email, the user may lose important information. Unsubscribing only affects the future, not the past — the most conservative, safest strategy. Users who want to clean up existing ad emails can do so manually in the Gmail UI.
 
 ---
 
-## 模块依赖关系
+## Module Dependencies
 
 ```
 main.py
  ├── auth.py            (get_gmail_service)
  ├── scanner.py         (scan_emails)
- │    ├── auth.py       (每线程获取独立 service)
- │    └── database.py   (过滤已退订发件人)
+ │    ├── auth.py       (each thread gets its own service)
+ │    └── database.py   (filter already-unsubscribed senders)
  ├── classifier.py      (classify_emails, categorize_groups)
- │    ├── config.py     (白名单/关键词/域名分类表)
- │    └── ai_classifier.py (classify_with_ai, categorize_with_ai; PROVIDERS 注册表)
+ │    ├── config.py     (whitelist/keywords/domain category tables)
+ │    └── ai_classifier.py (classify_with_ai, categorize_with_ai; PROVIDERS registry)
  │                      ├── config.py     (USE_AI_CLASSIFIER / AI_MAX_TOKENS)
- │                      └── user_config.py (活跃提供商 & API Key)
+ │                      └── user_config.py (active provider & API key)
  ├── unsubscriber.py    (execute_unsubscribe)
- │    └── (requests, beautifulsoup4 - 第三方库)
- ├── database.py        (SQLite: 已退订 + 历史记录)
- ├── config.py          (whitelist 命令直接操作)
- └── user_config.py     (启动时 migrate_from_env；_interactive_settings 写入配置)
+ │    └── (requests, beautifulsoup4 - third-party libs)
+ ├── database.py        (SQLite: unsubscribed + history)
+ ├── config.py          (whitelist command operates on it directly)
+ └── user_config.py     (migrate_from_env on startup; _interactive_settings writes config)
 ```
 
-所有模块均无循环依赖。`config.py` 和 `user_config.py` 是最底层（不依赖其他本地模块），`ai_classifier.py` 和 `database.py` 都只依赖它们，可独立测试。
+There are no circular dependencies. `config.py` and `user_config.py` sit at the bottom (they depend on no other local modules), and both `ai_classifier.py` and `database.py` depend only on them, so they can be tested independently.
 
 ---
 
-## 安全考量
+## Security Considerations
 
-| 风险 | 缓解措施 |
-|------|---------|
-| OAuth 令牌泄露 | `token.json` 在 `.gitignore` 中；落盘即 `chmod 0o600`，仅当前用户可读写 |
-| 误退订重要邮件 | 白名单 + 敏感词双重保护 + 2 条件门槛 |
-| 广告链接追踪 | 使用 List-Unsubscribe 头部而非正文链接（优先） |
-| 恶意退订链接（scheme 滥用） | `unsubscriber._is_safe_http_url()` 仅放行 `http://` / `https://`，拒绝 `javascript:` / `file:` / `data:` / `mailto:` 等 |
-| 账号凭据泄露 | `credentials.json` 在 `.gitignore` 中；首次加载时自动 `chmod 0o600` |
-| 本地数据库 PII 外泄 | `gmail-unsubscriber.db`（含扫描过的发件人邮箱）在 `init_db()` 后 `chmod 0o600` |
-| 误操作 | `--dry-run` 模式 + `--confirm` 逐个确认模式 |
-| 速率限制 | scanner 和 unsubscriber 均有请求间隔和重试机制（429/500/503/SSL/网络错误指数退避）；单封邮件重试 3 次仍失败时写 WARNING 日志而非静默跳过 |
-| AI API Key 泄露 | 存入 `user_config.json`（已加入 `.gitignore`），不写入代码；展示时脱敏（前 6 位 + 后 6 位）；异常日志里的 `sk-...` / `pk-...` / `Bearer ...` 等会被 `_mask_secrets()` 遮蔽为 `[REDACTED]` |
-| AI 接口泄露邮件内容 | 只发送发件人、主题、摘要片段，不发送邮件正文 |
+| Risk | Mitigation |
+|------|------------|
+| OAuth token leak | `token.json` is in `.gitignore`; on write it's `chmod 0o600`, readable/writable only by the current user |
+| Mistakenly unsubscribing important emails | Whitelist + sensitive-keyword double protection + 2-criteria threshold |
+| Ad link tracking | Use the List-Unsubscribe header (preferred) rather than body links |
+| Malicious unsubscribe links (scheme abuse) | `unsubscriber._is_safe_http_url()` allows only `http://` / `https://`, rejects `javascript:` / `file:` / `data:` / `mailto:`, etc. |
+| Account credential leak | `credentials.json` is in `.gitignore`; auto `chmod 0o600` on first load |
+| Local database PII exposure | `gmail-unsubscriber.db` (containing scanned sender emails) is `chmod 0o600` after `init_db()` |
+| Operational mistakes | `--dry-run` mode + `--confirm` one-by-one confirmation mode |
+| Rate limiting | Both scanner and unsubscriber use request intervals and retry logic (429/500/503/SSL/network errors with exponential backoff); if a single email still fails after 3 retries, a WARNING is logged rather than being silently skipped |
+| AI API key leak | Stored in `user_config.json` (already in `.gitignore`), never written into the codebase; displayed with masking (first 6 + last 6 chars); `sk-...` / `pk-...` / `Bearer ...` etc. in exception logs are replaced with `[REDACTED]` by `_mask_secrets()` |
+| AI endpoint leaking email content | Only sender, subject, and snippet are sent — the email body is never transmitted |

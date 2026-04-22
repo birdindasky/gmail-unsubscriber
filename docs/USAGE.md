@@ -1,10 +1,10 @@
-# Gmail 退订工具 · 使用指南
+# Gmail Unsubscriber · Quick Reference
 
-详细说明请看 [USAGE_GUIDE.md](USAGE_GUIDE.md)。
+For the full manual, see [USAGE_GUIDE.md](USAGE_GUIDE.md).
 
 ---
 
-## 激活环境（每次打开终端后运行一次）
+## Activate the Environment (run once per new terminal)
 
 ```bash
 source venv/bin/activate
@@ -12,123 +12,123 @@ source venv/bin/activate
 
 ---
 
-## 方式一：交互式菜单（推荐）
+## Option 1: Interactive Menu (recommended)
 
 ```bash
 python3 main.py
 ```
 
-直接运行，不带任何参数，会进入交互式菜单：
+Running it without any arguments opens the interactive menu:
 
 ```
 ╔══════════════════════════════════╗
-║      Gmail 邮件退订工具 📬       ║
+║     Gmail Unsubscriber 📬        ║
 ╠══════════════════════════════════╣
-║  1. 扫描邮件                     ║
-║  2. 执行退订                     ║
-║  3. 查看退订历史                 ║
-║  4. 管理白名单                   ║
-║  5. 设置                         ║
-║  0. 退出                         ║
+║  1. Scan Emails                  ║
+║  2. Run Unsubscribe              ║
+║  3. View History                 ║
+║  4. Manage Whitelist             ║
+║  5. Settings                     ║
+║  0. Exit                         ║
 ╚══════════════════════════════════╝
 ```
 
-**扫描**：选择 1，按提示输入扫描天数和范围，完成后邮件会按类别分组展示。扫描完成后菜单里「扫描邮件」会显示 ✅ 标记，代表结果已缓存。
+**Scan**: pick `1`, enter the day range and scope when prompted. Results are grouped by category. After scanning, the menu item shows a ✅ mark indicating cached results.
 
-**退订**：选择 2，如果上次扫描结果还在，会直接复用，无需重新扫描；也可以选择重新扫一次。按字母选择类别展开，输入编号选择退订的发件人。
+**Unsubscribe**: pick `2`. If a previous scan is cached, it's reused automatically — otherwise re-scan. Pick a category by letter, then enter numbers for the senders to unsubscribe from.
 
 ---
 
-## 方式二：命令行参数（高级用户）
+## Option 2: Command-Line Arguments (power users)
 
 ```bash
-# 扫描最近 30 天的促销邮件（只看，不退订）
+# Scan promotional emails from the last 30 days (view only, no unsubscribe)
 python3 main.py scan
 
-# 扫描全部历史邮件 + 全部分类（首次深度清理推荐）
+# Scan the entire history across all categories (recommended for first deep cleanup)
 python3 main.py scan --days 0 --all
 
-# 试运行退订，预览将要发生什么（不会真的退订）
+# Dry-run unsubscribe to preview what would happen (nothing is actually unsubscribed)
 python3 main.py unsubscribe --dry-run
 
-# 逐个确认执行退订（推荐日常使用）
+# Confirm each unsubscribe one by one (recommended for daily use)
 python3 main.py unsubscribe --confirm
 
-# 自动退订所有建议发件人（不逐个询问）
+# Auto-unsubscribe every suggested sender (no per-sender prompt)
 python3 main.py unsubscribe --confirm --auto
 
-# 退订 + 把旧广告邮件移出收件箱
+# Unsubscribe + move old promotional emails out of the inbox
 python3 main.py unsubscribe --confirm --archive
 
-# 把某个域名加入白名单（不再被退订）
-python3 main.py whitelist add 某公司.com
+# Add a domain to the whitelist (it will never be unsubscribed)
+python3 main.py whitelist add example.com
 
-# 查看退订历史
+# View unsubscribe history
 python3 main.py history
 
-# 查看日志（排查问题用）
+# View logs (for debugging)
 python3 main.py logs
 ```
 
 ---
 
-## AI 模型配置
+## AI Model Configuration
 
-通过交互菜单配置即可，无需改环境变量：
+Configure through the interactive menu — no environment variables needed:
 
 ```bash
 python3 main.py
-# → 选 5. 设置
-# → 选 1. 配置 AI 提供商
-# → 选择提供商（1-9）
-# → 粘贴 API Key
-# → 自动测试连接
-# → ✅ 保存
+# → pick 5. Settings
+# → pick 1. Configure AI Provider
+# → choose provider (1–9)
+# → paste your API key
+# → connection is tested automatically
+# → ✅ saved
 ```
 
-**支持的提供商：** OpenAI、Anthropic Claude、MiniMax、DeepSeek、Moonshot、通义千问、智谱 GLM、Ollama（本地），以及任何 OpenAI 兼容服务（自定义入口）。
+**Supported providers**: OpenAI, Anthropic Claude, MiniMax, DeepSeek, Moonshot, Qwen (Tongyi), Zhipu GLM, Ollama (local), and any OpenAI-compatible service (custom entry).
 
-配置保存在项目根目录的 `user_config.json`（加入 `.gitignore`，不会上传 git）。
+Config is saved to `user_config.json` in the project root (already in `.gitignore`, never pushed to git).
 
-**老用户无感迁移**：如果您之前通过环境变量配置过 MiniMax / Anthropic，首次运行新版本会自动迁移，不需要重新填。
+**Seamless upgrade for legacy users**: if you previously configured MiniMax or Anthropic via environment variables, the first run of the new version migrates the settings automatically — no re-entry needed.
 
-**AI 调用是缓存的**：同一个发件人邮箱只会调用一次 AI，结果在本次运行内复用，避免对同一域名的 100 封邮件做 100 次 AI 请求。
+**AI calls are cached**: the same sender address only triggers the AI once, and the result is reused throughout the current run. This avoids calling the AI 100 times for 100 emails from the same domain.
 
 ---
 
-## 首次深度清理流程
+## First-Time Deep Cleanup
 
-### 交互模式
+### Interactive Mode
 
-1. 运行 `python3 main.py`
-2. 选择 1 扫描，天数输入 0，范围选全部
-3. 查看分类结果，把不想退订的加白名单（选择 4）
-4. 选择 2 退订，按类别选择退订
+1. Run `python3 main.py`
+2. Pick `1. Scan`, enter `0` for days, and choose "all" for scope
+3. Review the categorized results; add senders you want to keep to the whitelist (pick `4`)
+4. Pick `2. Unsubscribe` and unsubscribe by category
 
-### 命令行模式
+### Command-Line Mode
 
 ```bash
-# 1. 扫描，看看有哪些广告发件人
+# 1. Scan to see which promotional senders exist
 python3 main.py scan --days 0 --all
 
-# 2. 把不想退订的加白名单
-python3 main.py whitelist add 某公司.com
+# 2. Add any senders you want to keep to the whitelist
+python3 main.py whitelist add example.com
 
-# 3. 试运行，确认无误
+# 3. Dry-run to verify the plan
 python3 main.py unsubscribe --dry-run --days 0 --all
 
-# 4. 正式执行退订
+# 4. Actually unsubscribe
 python3 main.py unsubscribe --confirm --days 0 --all
 ```
 
 ---
 
-## 关键说明
+## Key Notes
 
-- 直接运行 `python3 main.py`（无参数）进入交互式菜单
-- `scan` 只扫描，**不退订**；`unsubscribe` 内部会自己扫描
-- `--days 0` 表示扫全部历史邮件（无时间限制），邮件多时需要等待
-- `--all` 扫全部分类，默认只扫 Gmail 的促销标签
-- `--auto` 必须配合 `--confirm` 一起使用
-- 退订后旧邮件仍在收件箱，加 `--archive` 可以顺手移走
-- 扫描结果自动按邮件类别分组（电商、新闻、社交等）
+- Running `python3 main.py` with no arguments opens the interactive menu
+- `scan` only scans — it does **not** unsubscribe. `unsubscribe` has its own internal scan step
+- `--days 0` means scan all historical emails (no time limit); expect a wait on large mailboxes
+- `--all` scans every category (default is only Gmail's Promotions label)
+- `--auto` must be combined with `--confirm`
+- After unsubscribing, old emails remain in the inbox — add `--archive` to move them out
+- Scan results are automatically grouped by category (e-commerce, newsletters, social, etc.)
