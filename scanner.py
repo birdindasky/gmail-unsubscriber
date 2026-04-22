@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-邮件扫描模块 - 从 Gmail 获取邮件列表及详情
-使用小批量并发（3线程）提升性能，并过滤已退订的发件人。
+Email scanning module - fetches Gmail message lists and metadata.
+Uses small-batch concurrency (3 threads) for speed and filters senders that were
+already unsubscribed.
 """
 
 import logging
@@ -21,21 +22,21 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RETRY_DELAY = 2
-REQUEST_SLEEP = 0.15   # 默认每个线程请求之间的休眠
-CONCURRENT_WORKERS = 3  # 默认并发线程数（保守值，不触发 Gmail 并发限制）
-PROGRESS_INTERVAL = 50  # 每处理多少封打印一次进度
-LIST_PROGRESS_INTERVAL = 5  # 每拉取多少页打印一次列表阶段进度
+REQUEST_SLEEP = 0.15   # Default pause between requests per thread
+CONCURRENT_WORKERS = 3  # Default worker count; conservative to avoid Gmail rate issues
+PROGRESS_INTERVAL = 50  # Print progress every N processed emails
+LIST_PROGRESS_INTERVAL = 5  # Print list-stage progress every N pages
 LARGE_SCAN_THRESHOLD = 1000
 VERY_LARGE_SCAN_THRESHOLD = 5000
 ALL_MAIL_BASE_EXCLUDES = "-in:sent -in:drafts -in:trash -in:spam"
 
-# 每个线程维护自己的 Gmail service 对象
+# Each thread keeps its own Gmail service object
 _thread_local = threading.local()
 _service_init_lock = threading.Lock()
 
 
 def _get_thread_service():
-    """获取当前线程的 Gmail service（每线程只创建一次）。"""
+    """Get the Gmail service for the current thread, creating it once per thread."""
     if not hasattr(_thread_local, "service"):
         with _service_init_lock:
             if not hasattr(_thread_local, "service"):
@@ -44,7 +45,7 @@ def _get_thread_service():
 
 
 def _retry_request(func, *args, **kwargs):
-    """带重试机制的 API 请求包装器。"""
+    """Wrap an API request with retry logic."""
     last_error = None
     for attempt in range(MAX_RETRIES):
         try:
@@ -52,21 +53,21 @@ def _retry_request(func, *args, **kwargs):
         except HttpError as e:
             if e.resp.status in (429, 500, 503):
                 wait = RETRY_DELAY * (attempt + 1)
-                logger.warning(f"API 请求失败（{e.resp.status}），{wait}s 后重试...")
+                logger.warning(f"API request failed ({e.resp.status}); retrying in {wait}s...")
                 time.sleep(wait)
                 last_error = e
             else:
                 raise
         except (ssl.SSLError, ConnectionError, OSError) as e:
             wait = RETRY_DELAY * (attempt + 1)
-            logger.warning(f"网络连接错误，{wait}s 后重试（第 {attempt+1} 次）：{e}")
+            logger.warning(f"Network error; retrying in {wait}s (attempt {attempt+1}): {e}")
             time.sleep(wait)
             last_error = e
-    raise last_error if last_error else RuntimeError("重试请求失败但无错误信息")
+    raise last_error if last_error else RuntimeError("Retried request failed without an error object")
 
 
 def _get_fetch_settings(total_messages: int) -> tuple[int, float]:
-    """按任务规模选择 metadata 拉取并发度与请求间隔。"""
+    """Choose metadata fetch concurrency and pacing based on task size."""
     if total_messages >= VERY_LARGE_SCAN_THRESHOLD:
         return 6, 0.03
     if total_messages >= LARGE_SCAN_THRESHOLD:
@@ -83,48 +84,48 @@ def scan_emails(
     max_messages: Optional[int] = None,
 ) -> list[dict]:
     """
-    扫描最近 N 天内收到的邮件，返回邮件详情列表。
-    默认优先扫描 CATEGORY_PROMOTIONS 标签；scan_all=True 时扫描全部邮件。
-    已退订的发件人自动过滤。
+    Scan emails received within the last N days and return email detail dictionaries.
+    By default it scans the CATEGORY_PROMOTIONS label first; scan_all=True scans all mail.
+    Already-unsubscribed senders are filtered automatically.
     """
     if days == 0:
-        # days=0 表示不限时间，扫描全部历史邮件
+        # days=0 means no time limit; scan full history
         date_filter = ""
-        time_desc = "全部历史"
+        time_desc = "all history"
     else:
         since_date = datetime.now() - timedelta(days=days)
         after_timestamp = int(since_date.timestamp())
         date_filter = f"after:{after_timestamp} "
-        time_desc = f"最近 {days} 天"
+        time_desc = f"last {days} days"
 
     if scan_all:
         query = f"{date_filter}{ALL_MAIL_BASE_EXCLUDES}".strip()
-        label_desc = "全部邮件（已排除已发送/草稿/垃圾箱/垃圾邮件）"
+        label_desc = "all mail (excluding sent/drafts/trash/spam)"
     else:
         query = f"{date_filter}category:promotions"
-        label_desc = "促销邮件"
+        label_desc = "promotional mail"
 
-    logger.info(f"扫描{time_desc}的{label_desc}")
-    print(f"\n📬 正在扫描{time_desc}的{label_desc}...")
+    logger.info(f"Scanning {label_desc} from {time_desc}")
+    print(f"\n📬 Scanning {label_desc} from {time_desc}...")
     if max_messages:
-        print(f"   最多处理前 {max_messages} 封邮件")
+        print(f"   Processing up to the first {max_messages} emails")
 
     message_stubs = _list_all_messages(service, query, max_messages=max_messages)
     total = len(message_stubs)
-    logger.info(f"共找到 {total} 封邮件，开始批量解析...")
-    print(f"   共找到 {total} 封邮件，正在批量解析详情...\n")
+    logger.info(f"Found {total} emails; starting batch parsing")
+    print(f"   Found {total} emails; parsing details in batches...\n")
 
     if total >= VERY_LARGE_SCAN_THRESHOLD:
-        print("   ⚠️  当前任务非常大，可能需要较长时间。")
-        print("   提示：可加 --max-messages N 先做抽样验证。\n")
+        print("   ⚠️  This is a very large task and may take a while.")
+        print("   Tip: use --max-messages N first to sample-check the results.\n")
     elif total >= LARGE_SCAN_THRESHOLD:
-        print("   ⏳ 当前样本较大，请耐心等待；程序会持续打印进度。\n")
+        print("   ⏳ This sample is large. Please wait; progress will keep printing.\n")
 
     if total == 0:
         return []
 
     workers, request_sleep = _get_fetch_settings(total)
-    print(f"   扫描配置：{workers} 线程 / 每请求间隔 {request_sleep:.2f}s\n")
+    print(f"   Scan settings: {workers} threads / {request_sleep:.2f}s between requests\n")
     emails = _fetch_messages_batch(
         service,
         message_stubs,
@@ -132,7 +133,7 @@ def scan_emails(
         request_sleep=request_sleep,
     )
 
-    # 过滤已退订的发件人
+    # Filter senders that were already unsubscribed
     already_done = set()
     filtered = []
     for em in emails:
@@ -140,15 +141,15 @@ def scan_emails(
         if database.is_already_unsubscribed(sender_email):
             if sender_email not in already_done:
                 already_done.add(sender_email)
-                logger.debug(f"跳过已退订发件人：{sender_email}")
+                logger.debug(f"Skipping already unsubscribed sender: {sender_email}")
         else:
             filtered.append(em)
 
     if already_done:
-        print(f"   ⏭️  跳过 {len(already_done)} 个已退订的发件人\n")
+        print(f"   ⏭️  Skipped {len(already_done)} already unsubscribed senders\n")
 
-    print(f"✅ 扫描完成，共解析 {len(emails)} 封邮件，过滤后剩余 {len(filtered)} 封\n")
-    logger.info(f"扫描完成：{len(emails)} 封邮件，过滤 {len(already_done)} 个已退订发件人")
+    print(f"✅ Scan complete: parsed {len(emails)} emails, {len(filtered)} remain after filtering\n")
+    logger.info(f"Scan complete: parsed {len(emails)} emails, filtered {len(already_done)} unsubscribed senders")
     return filtered
 
 
@@ -159,8 +160,8 @@ def _fetch_messages_batch(
     request_sleep: float = REQUEST_SLEEP,
 ) -> list[dict]:
     """
-    并发获取邮件 metadata，遇到 429 自动退避重试。
-    每个线程维护独立的请求间隔以控制总 QPS。
+    Fetch email metadata concurrently, backing off automatically on 429 responses.
+    Each thread keeps its own pacing to control total request rate.
     """
     results = []
     total = len(message_stubs)
@@ -187,25 +188,25 @@ def _fetch_messages_batch(
                 if e.resp.status in (429, 500, 503):
                     last_retriable_status = e.resp.status
                     wait = RETRY_DELAY * (attempt + 1)
-                    logger.debug(f"{e.resp.status} 错误，{wait}s 后重试（第 {attempt+1} 次）...")
+                    logger.debug(f"{e.resp.status} error; retrying in {wait}s (attempt {attempt+1})...")
                     time.sleep(wait)
                 else:
-                    logger.warning(f"获取邮件失败（{stub['id']}）：{e}")
+                    logger.warning(f"Failed to fetch email ({stub['id']}): {e}")
                     break
             except (ssl.SSLError, ConnectionError, OSError) as e:
                 last_retriable_status = -1
                 wait = RETRY_DELAY * (attempt + 1)
-                logger.debug(f"网络错误，{wait}s 后重试（第 {attempt+1} 次）：{e}")
+                logger.debug(f"Network error; retrying in {wait}s (attempt {attempt+1}): {e}")
                 time.sleep(wait)
             except Exception as e:
-                logger.warning(f"邮件解析失败（{stub['id']}）：{e}")
+                logger.warning(f"Failed to parse email ({stub['id']}): {e}")
                 break
         else:
-            # for-else：未 break 说明所有 attempt 都用光了且最终无结果
+            # for-else: no break means every attempt was used and no result was produced
             if parsed is None and last_retriable_status is not None:
                 logger.warning(
-                    f"邮件 {stub['id']} 重试 {MAX_RETRIES} 次仍失败（最后状态 "
-                    f"{last_retriable_status}），已跳过"
+                    f"Email {stub['id']} still failed after {MAX_RETRIES} retries "
+                    f"(last status {last_retriable_status}); skipped"
                 )
 
         time.sleep(request_sleep)
@@ -214,7 +215,7 @@ def _fetch_messages_batch(
             progress["done"] += 1
             done = progress["done"]
             if done % PROGRESS_INTERVAL == 0 or done == total:
-                print(f"   进度：{done}/{total} 封...")
+                print(f"   Progress: {done}/{total} emails...")
 
         return parsed
 
@@ -230,7 +231,7 @@ def _fetch_messages_batch(
 
 
 def _list_all_messages(service, query: str, max_messages: Optional[int] = None) -> list[dict]:
-    """分页获取所有符合查询条件的邮件存根。"""
+    """Fetch all message stubs matching the query, page by page."""
     messages = []
     page_token = None
     page_count = 0
@@ -245,18 +246,18 @@ def _list_all_messages(service, query: str, max_messages: Optional[int] = None) 
                 service.users().messages().list(**kwargs).execute
             )
         except HttpError as e:
-            logger.error(f"获取邮件列表失败：{e}")
+            logger.error(f"Failed to fetch email list: {e}")
             break
 
         messages.extend(response.get("messages", []))
         page_count += 1
         if page_count == 1 or page_count % LIST_PROGRESS_INTERVAL == 0:
             elapsed = int(time.time() - started_at)
-            print(f"   列表进度：已拉取 {page_count} 页，累计 {len(messages)} 封（{elapsed}s）")
+            print(f"   List progress: {page_count} pages fetched, {len(messages)} emails total ({elapsed}s)")
 
         if max_messages and len(messages) >= max_messages:
             messages = messages[:max_messages]
-            print(f"   已达到上限：提前截断为前 {len(messages)} 封邮件")
+            print(f"   Reached cap: truncated early to the first {len(messages)} emails")
             break
 
         page_token = response.get("nextPageToken")
@@ -267,7 +268,7 @@ def _list_all_messages(service, query: str, max_messages: Optional[int] = None) 
 
 
 def _parse_message(msg: dict) -> Optional[dict]:
-    """将 Gmail API 返回的原始邮件对象解析为结构化字典。"""
+    """Parse a raw Gmail API message object into a structured dictionary."""
     try:
         payload = msg.get("payload", {})
         headers = {
@@ -280,7 +281,7 @@ def _parse_message(msg: dict) -> Optional[dict]:
         return {
             "id": msg["id"],
             "thread_id": msg.get("threadId", ""),
-            "subject": headers.get("subject", "（无主题）"),
+            "subject": headers.get("subject", "(No subject)"),
             "sender": sender_raw,
             "sender_email": sender_email,
             "sender_domain": sender_domain,
@@ -288,18 +289,18 @@ def _parse_message(msg: dict) -> Optional[dict]:
             "list_unsubscribe": headers.get("list-unsubscribe"),
             "list_unsubscribe_post": headers.get("list-unsubscribe-post"),
             "snippet": msg.get("snippet", ""),
-            "body_text": "",   # metadata 格式不含正文，退订时按需获取
-            "body_html": "",   # 见 unsubscriber._fetch_html_body()
+            "body_text": "",   # metadata does not include bodies; fetched later if needed
+            "body_html": "",   # see unsubscriber._fetch_html_body()
             "labels": msg.get("labelIds", []),
             "_headers": headers,
         }
     except Exception as e:
-        logger.warning(f"解析邮件失败：{e}")
+        logger.warning(f"Failed to parse email: {e}")
         return None
 
 
 def _parse_sender(sender_raw: str) -> tuple[str, str]:
-    """从发件人字段提取邮箱地址和域名。"""
+    """Extract the email address and domain from a sender field."""
     if "<" in sender_raw and ">" in sender_raw:
         start = sender_raw.index("<") + 1
         end = sender_raw.index(">")

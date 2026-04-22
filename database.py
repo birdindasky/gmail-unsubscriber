@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-数据库模块 - SQLite 状态管理
-管理三张表：退订历史、扫描记录、用户白名单
+Database module - SQLite state management.
+Manages three tables: unsubscribe history, scan history, and the user whitelist.
 """
 
 import os
@@ -21,7 +21,7 @@ def _get_connection() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """初始化数据库，创建所需的三张表（如已存在则跳过）。"""
+    """Initialize the database and create the required tables if missing."""
     conn = _get_connection()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS unsubscribed_senders (
@@ -49,16 +49,16 @@ def init_db() -> None:
     """)
     conn.commit()
     conn.close()
-    # 确保数据库文件权限为 0o600（包含扫描历史等 PII）
+    # Ensure the database file is 0o600 because it contains scan history and other PII
     try:
         os.chmod(config.DB_PATH, 0o600)
     except OSError:
         pass
-    logger.debug("数据库初始化完成")
+    logger.debug("Database initialization complete")
 
 
 def record_unsubscribe(sender_email: str, sender_name: str, method: str, success: bool) -> None:
-    """记录退订操作（成功或失败）。已存在的记录会被覆盖更新。"""
+    """Record an unsubscribe attempt. Existing records are replaced."""
     conn = _get_connection()
     conn.execute(
         """
@@ -70,11 +70,11 @@ def record_unsubscribe(sender_email: str, sender_name: str, method: str, success
     )
     conn.commit()
     conn.close()
-    logger.debug(f"退订记录已保存：{sender_email}（{'成功' if success else '失败'}）")
+    logger.debug(f"Saved unsubscribe record: {sender_email} ({'success' if success else 'failed'})")
 
 
 def is_already_unsubscribed(sender_email: str) -> bool:
-    """检查该发件人是否已成功退订过（只有 success=1 才算）。"""
+    """Check whether this sender has already been successfully unsubscribed."""
     conn = _get_connection()
     row = conn.execute(
         "SELECT id FROM unsubscribed_senders WHERE sender_email = ? AND success = 1",
@@ -85,7 +85,7 @@ def is_already_unsubscribed(sender_email: str) -> bool:
 
 
 def get_history(limit: int = 50) -> list[dict]:
-    """返回退订历史记录，按时间倒序。"""
+    """Return unsubscribe history in reverse chronological order."""
     conn = _get_connection()
     rows = conn.execute(
         "SELECT * FROM unsubscribed_senders ORDER BY unsubscribed_at DESC LIMIT ?",
@@ -96,7 +96,7 @@ def get_history(limit: int = 50) -> list[dict]:
 
 
 def record_scan(days: int, total_emails: int, candidates: int, unsubscribed: int) -> None:
-    """记录一次扫描操作的统计数据。"""
+    """Record summary stats for a scan run."""
     conn = _get_connection()
     conn.execute(
         """
@@ -110,7 +110,7 @@ def record_scan(days: int, total_emails: int, candidates: int, unsubscribed: int
 
 
 def add_to_user_whitelist(domain: str) -> bool:
-    """将域名加入用户白名单。返回 True=新增成功，False=已存在。"""
+    """Add a domain to the user whitelist. Returns True if added, False if it already exists."""
     domain = domain.lower().strip()
     conn = _get_connection()
     try:
@@ -120,7 +120,7 @@ def add_to_user_whitelist(domain: str) -> bool:
         )
         conn.commit()
         conn.close()
-        logger.info(f"白名单新增：{domain}")
+        logger.info(f"Added domain to whitelist: {domain}")
         return True
     except sqlite3.IntegrityError:
         conn.close()
@@ -128,7 +128,7 @@ def add_to_user_whitelist(domain: str) -> bool:
 
 
 def get_user_whitelist() -> list[str]:
-    """返回用户自定义白名单域名列表。"""
+    """Return the list of user-defined whitelist domains."""
     conn = _get_connection()
     rows = conn.execute("SELECT domain FROM user_whitelist").fetchall()
     conn.close()

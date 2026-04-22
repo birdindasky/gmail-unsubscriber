@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-AI 分类模块 - 支持 9 种 AI 提供商（含自定义 OpenAI 兼容入口）
-功能：
-1. classify_with_ai() — 判断邮件是否为广告（关键词命中 1 条时触发）
-2. categorize_with_ai() — 判断发件人所属邮件类别
+AI classification module - supports 9 AI providers, including custom
+OpenAI-compatible endpoints.
+Functions:
+1. classify_with_ai() - decides whether an email is an ad
+   (triggered when exactly 1 keyword condition matches)
+2. categorize_with_ai() - decides which email category a sender belongs to
 """
 
 import json
@@ -25,7 +27,7 @@ def _mask_secrets(text: str) -> str:
 
 
 # ────────────────────────────────────────────────────────────────
-#  提供商注册表
+#  Provider registry
 # ────────────────────────────────────────────────────────────────
 
 PROVIDERS = {
@@ -65,28 +67,28 @@ PROVIDERS = {
         "key_hint": "sk-...",
     },
     "qwen": {
-        "name": "通义千问",
+        "name": "Qwen",
         "protocol": "openai",
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "default_model": "qwen-turbo",
         "key_hint": "sk-...",
     },
     "zhipu": {
-        "name": "智谱 GLM",
+        "name": "Zhipu GLM",
         "protocol": "openai",
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
         "default_model": "glm-4-flash",
         "key_hint": "...",
     },
     "ollama": {
-        "name": "Ollama (本地)",
+        "name": "Ollama (Local)",
         "protocol": "openai",
         "base_url": "http://localhost:11434/v1",
         "default_model": "llama3",
-        "key_hint": "随便填",
+        "key_hint": "Any value",
     },
     "custom": {
-        "name": "自定义 OpenAI 兼容",
+        "name": "Custom OpenAI-Compatible",
         "protocol": "openai",
         "base_url": None,
         "default_model": None,
@@ -96,7 +98,7 @@ PROVIDERS = {
 
 
 def _extract_text_from_response(message) -> str:
-    """从 Anthropic SDK 响应中提取文本，兼容推理模型只返回 ThinkingBlock 的情况。"""
+    """Extract text from an Anthropic SDK response, including ThinkingBlock-only replies."""
     for block in message.content:
         if getattr(block, "type", "") == "text" and hasattr(block, "text"):
             return block.text.strip()
@@ -139,13 +141,13 @@ _cached_provider: Optional[dict] = None
 
 
 def _get_provider() -> dict:
-    """获取活跃提供商配置（进程内缓存，避免每次 AI 调用都读磁盘）。"""
+    """Get the active provider config, cached in-process to avoid repeated disk reads."""
     global _cached_provider
     if _cached_provider is not None:
         return _cached_provider
     provider = user_config.get_active_provider()
     if not provider:
-        raise RuntimeError("未配置 AI 提供商")
+        raise RuntimeError("No AI provider configured")
     meta = PROVIDERS.get(provider["id"])
     if meta and not provider.get("base_url") and meta.get("base_url"):
         provider["base_url"] = meta["base_url"]
@@ -154,23 +156,23 @@ def _get_provider() -> dict:
 
 
 def invalidate_provider_cache() -> None:
-    """清除提供商缓存（配置变更后调用）。"""
+    """Clear the provider cache after configuration changes."""
     global _cached_provider
     _cached_provider = None
 
 
 def _call_ai(prompt: str) -> str:
-    """按活跃提供商的 protocol 分发调用。"""
+    """Dispatch the AI call based on the active provider protocol."""
     provider = _get_provider()
     meta = PROVIDERS.get(provider["id"])
     if not meta:
-        raise ValueError(f"未知提供商：{provider['id']}")
+        raise ValueError(f"Unknown provider: {provider['id']}")
     if meta["protocol"] == "openai":
         return _call_openai(prompt, provider)
     elif meta["protocol"] == "anthropic":
         return _call_anthropic(prompt, provider)
     else:
-        raise ValueError(f"未知协议：{meta['protocol']}")
+        raise ValueError(f"Unknown protocol: {meta['protocol']}")
 
 
 def _parse_json_response(text: str) -> dict:
@@ -192,29 +194,29 @@ def _parse_json_response(text: str) -> dict:
 
 def _check_ai_available() -> tuple[bool, str]:
     if not config.USE_AI_CLASSIFIER:
-        return False, "AI 分类已关闭"
+        return False, "AI classification is disabled"
     try:
         _get_provider()
     except RuntimeError:
-        return False, "未配置 AI 提供商，跳过 AI 分类"
+        return False, "No AI provider configured; skipping AI classification"
     return True, ""
 
 
 def classify_with_ai(sender: str, subject: str, snippet: str) -> tuple[bool, str]:
     """
-    调用 AI 判断邮件是否为商业广告/促销邮件。
-    Returns: (是否为广告, 判断理由)
+    Use AI to decide whether an email is a commercial ad / promotional message.
+    Returns: (is_ad, reason)
     """
     available, reason = _check_ai_available()
     if not available:
         return False, reason
 
     prompt = (
-        "判断以下邮件是否为商业广告或促销邮件。"
-        '只回答 JSON，格式：{"is_ad": true/false, "reason": "一句话理由"}\n\n'
-        f"发件人：{sender}\n"
-        f"主题：{subject}\n"
-        f"摘要：{snippet[:200]}"
+        "Decide whether the following email is a commercial advertisement or promotional email. "
+        'Reply with JSON only, in the format {"is_ad": true/false, "reason": "one-sentence reason"}\n\n'
+        f"Sender: {sender}\n"
+        f"Subject: {subject}\n"
+        f"Snippet: {snippet[:200]}"
     )
 
     try:
@@ -222,51 +224,51 @@ def classify_with_ai(sender: str, subject: str, snippet: str) -> tuple[bool, str
         data = _parse_json_response(text)
         is_ad = bool(data.get("is_ad", False))
         reason = data.get("reason", "")
-        logger.debug(f"AI 判定：{'广告' if is_ad else '非广告'} — {reason}")
+        logger.debug(f"AI verdict: {'ad' if is_ad else 'not ad'} - {reason}")
         return is_ad, reason
     except json.JSONDecodeError as e:
-        logger.warning(f"AI 返回格式解析失败：{_mask_secrets(str(e))}")
-        return False, f"AI 返回格式解析失败：{e}"
+        logger.warning(f"Failed to parse AI response format: {_mask_secrets(str(e))}")
+        return False, f"Failed to parse AI response format: {e}"
     except Exception as e:
-        logger.warning(f"AI 分类调用失败：{_mask_secrets(str(e))}")
-        return False, f"AI 调用失败：{e}"
+        logger.warning(f"AI classification call failed: {_mask_secrets(str(e))}")
+        return False, f"AI call failed: {e}"
 
 
 def categorize_with_ai(sender: str, subject: str) -> str:
     """
-    调用 AI 判断发件人所属的邮件类别。
-    Returns: 类别名（如 "电商购物"），失败时返回 "其他"
+    Use AI to decide which email category the sender belongs to.
+    Returns a category name and falls back to the default category on failure.
     """
     available, _ = _check_ai_available()
     if not available:
-        return "其他"
+        return "Other"
 
-    categories_str = "、".join(config.CATEGORY_NAMES)
+    categories_str = ", ".join(config.CATEGORY_NAMES)
     prompt = (
-        f"根据发件人和邮件主题，判断这封邮件属于以下哪个类别：{categories_str}\n"
-        '只回答 JSON，格式：{"category": "类别名"}\n\n'
-        f"发件人：{sender}\n"
-        f"主题：{subject}"
+        f"Based on the sender and subject, decide which of the following categories this email belongs to: {categories_str}\n"
+        'Reply with JSON only, in the format {"category": "category name"}\n\n'
+        f"Sender: {sender}\n"
+        f"Subject: {subject}"
     )
 
     try:
         text = _call_ai(prompt)
         data = _parse_json_response(text)
-        category = data.get("category", "其他")
+        category = data.get("category", "Other")
         if category not in config.CATEGORY_NAMES:
-            logger.debug(f"AI 返回未知类别 '{category}'，回退到'其他'")
-            return "其他"
+            logger.debug(f"AI returned unknown category '{category}', falling back to 'Other'")
+            return "Other"
         return category
     except Exception as e:
-        logger.warning(f"AI 分类调用失败：{_mask_secrets(str(e))}")
-        return "其他"
+        logger.warning(f"AI classification call failed: {_mask_secrets(str(e))}")
+        return "Other"
 
 
 def test_connection(provider_id: str, api_key: str, model: str, base_url: Optional[str] = None) -> tuple[bool, str]:
-    """测试给定凭证能否成功调用 AI。返回 (是否成功, 消息)。"""
+    """Test whether the given credentials can successfully call the AI provider."""
     meta = PROVIDERS.get(provider_id)
     if not meta:
-        return False, f"未知提供商：{provider_id}"
+        return False, f"Unknown provider: {provider_id}"
 
     probe_provider = {
         "id": provider_id,
@@ -279,6 +281,6 @@ def test_connection(provider_id: str, api_key: str, model: str, base_url: Option
             _call_openai("Say hi in one word.", probe_provider)
         else:
             _call_anthropic("Say hi in one word.", probe_provider)
-        return True, "连接成功"
+        return True, "Connection successful"
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"

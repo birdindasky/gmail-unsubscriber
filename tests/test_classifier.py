@@ -30,14 +30,14 @@ def test_whitelisted_sender_not_unsubscribed():
     em = _make_email("no-reply@google.com", "Google 通知", ["CATEGORY_PROMOTIONS"])
     result, reason = classifier.should_unsubscribe(em, use_ai=False)
     assert result is False
-    assert "白名单" in reason
+    assert "whitelisted" in reason
 
 
 def test_sensitive_keyword_not_unsubscribed():
     em = _make_email("alerts@bank.unknown.com", "您的验证码是 123456")
     result, reason = classifier.should_unsubscribe(em, use_ai=False)
     assert result is False
-    assert "敏感" in reason
+    assert "sensitive keywords" in reason
 
 
 def test_two_conditions_marked_as_ad():
@@ -82,7 +82,7 @@ def test_post_cancellation_feedback_not_unsubscribed():
     )
     result, reason = classifier.should_unsubscribe(em, use_ai=False)
     assert result is False
-    assert "反馈调查" in reason
+    assert "feedback survey" in reason
 
 
 def test_salesforce_brand_not_matched_by_sales_keyword():
@@ -94,7 +94,7 @@ def test_salesforce_brand_not_matched_by_sales_keyword():
     )
     result, reason = classifier.should_unsubscribe(em, use_ai=False)
     assert result is False
-    assert "未达到广告判定标准" in reason
+    assert "Did not meet" in reason
 
 
 def test_sales_subdomain_still_matches_suspicious_sender_keyword():
@@ -106,7 +106,7 @@ def test_sales_subdomain_still_matches_suspicious_sender_keyword():
     )
     result, reason = classifier.should_unsubscribe(em, use_ai=False)
     assert result is True
-    assert "可疑关键词" in reason
+    assert "suspicious keywords" in reason
 
 
 def test_classify_emails_tracks_message_ids():
@@ -138,14 +138,14 @@ def test_categorize_groups_by_domain():
          "count": 3, "reasons": ["广告"], "sample_subjects": ["Hi"], "message_ids": ["id3"],
          "list_unsubscribe": None, "list_unsubscribe_post": None, "sample_html": "", "sample_id": "id3"},
     ]
-    with patch("classifier.ai_classifier.categorize_with_ai", return_value="其他"):
+    with patch("classifier.ai_classifier.categorize_with_ai", return_value="Other"):
         result = classifier.categorize_groups(groups, use_ai=False)
 
-    assert "电商购物" in result
-    assert "新闻资讯" in result
-    assert "其他" in result
-    assert len(result["电商购物"]) == 1
-    assert result["电商购物"][0]["sender_email"] == "promo@taobao.com"
+    assert "E-commerce" in result
+    assert "Newsletter" in result
+    assert "Other" in result
+    assert len(result["E-commerce"]) == 1
+    assert result["E-commerce"][0]["sender_email"] == "promo@taobao.com"
 
 
 def test_categorize_groups_with_ai():
@@ -155,12 +155,12 @@ def test_categorize_groups_with_ai():
          "count": 3, "reasons": ["广告"], "sample_subjects": ["Buy now"], "message_ids": ["id1"],
          "list_unsubscribe": None, "list_unsubscribe_post": None, "sample_html": "", "sample_id": "id1"},
     ]
-    with patch("classifier.ai_classifier.categorize_with_ai", return_value="电商购物") as mock_ai:
+    with patch("classifier.ai_classifier.categorize_with_ai", return_value="E-commerce") as mock_ai:
         result = classifier.categorize_groups(groups, use_ai=True)
 
     mock_ai.assert_called_once_with("Mystery Shop", "Buy now")
-    assert "电商购物" in result
-    assert len(result["电商购物"]) == 1
+    assert "E-commerce" in result
+    assert len(result["E-commerce"]) == 1
 
 
 def test_is_whitelisted_exact_match(monkeypatch):

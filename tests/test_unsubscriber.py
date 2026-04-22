@@ -50,9 +50,9 @@ def test_unsubscribe_via_mailto_no_email():
 def test_create_or_get_label_existing():
     mock_service = MagicMock()
     mock_service.users.return_value.labels.return_value.list.return_value.execute.return_value = {
-        "labels": [{"id": "Label_123", "name": "已退订"}]
+        "labels": [{"id": "Label_123", "name": "Unsubscribed"}]
     }
-    label_id = unsubscriber.create_or_get_label(mock_service, "已退订")
+    label_id = unsubscriber.create_or_get_label(mock_service, "Unsubscribed")
     assert label_id == "Label_123"
     mock_service.users.return_value.labels.return_value.create.assert_not_called()
 
@@ -63,9 +63,9 @@ def test_create_or_get_label_creates_new():
         "labels": []
     }
     mock_service.users.return_value.labels.return_value.create.return_value.execute.return_value = {
-        "id": "Label_new", "name": "已退订"
+        "id": "Label_new", "name": "Unsubscribed"
     }
-    label_id = unsubscriber.create_or_get_label(mock_service, "已退订")
+    label_id = unsubscriber.create_or_get_label(mock_service, "Unsubscribed")
     assert label_id == "Label_new"
 
 
@@ -101,7 +101,7 @@ def test_dry_run_fetches_html_when_sample_html_missing():
 
     assert result["success"] is True
     assert result["details"]["available_methods"]
-    assert "正文退订链接" in result["details"]["available_methods"][0]
+    assert "body unsubscribe link" in result["details"]["available_methods"][0]
 
 
 def test_is_safe_http_url_accepts_https():
@@ -133,7 +133,7 @@ def test_unsubscribe_via_one_click_rejects_javascript():
     import unsubscriber
     result = unsubscriber.unsubscribe_via_one_click("javascript:alert(1)")
     assert result["success"] is False
-    assert "拒绝" in result["message"]
+    assert "Rejected" in result["message"]
 
 
 def test_unsubscribe_via_link_rejects_javascript_anchor():
@@ -141,4 +141,4 @@ def test_unsubscribe_via_link_rejects_javascript_anchor():
     html = '<a href="JAVASCRIPT:alert(1)">unsubscribe</a>'
     result = unsubscriber.unsubscribe_via_link(html)
     assert result["success"] is False
-    assert "未在邮件正文中找到退订链接" in result["message"] or "拒绝" in result["message"]
+    assert "No unsubscribe link" in result["message"] or "Rejected" in result["message"]

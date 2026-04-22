@@ -170,7 +170,7 @@ def test_list_all_messages_prints_progress(capsys):
         scanner._list_all_messages(mock_service, "category:promotions")
 
     captured = capsys.readouterr()
-    assert "列表进度" in captured.out
+    assert "List progress" in captured.out
 
 
 def test_scan_all_query_excludes_non_inbox_buckets():
@@ -210,4 +210,4 @@ def test_fetch_one_logs_warning_when_retries_exhausted(caplog):
         )
 
     assert result == []
-    assert any("abc123" in r.message and "重试" in r.message for r in caplog.records)
+    assert any("abc123" in r.message and "retries" in r.message for r in caplog.records)

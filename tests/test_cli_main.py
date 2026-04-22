@@ -40,7 +40,7 @@ def test_print_runtime_warnings_outputs_to_stderr(monkeypatch, capsys):
     main.print_runtime_warnings()
     captured = capsys.readouterr()
 
-    assert "运行环境提示" in captured.err
+    assert "Runtime notices" in captured.err
     assert "warn 1" in captured.err
     assert "warn 2" in captured.err
 
@@ -93,7 +93,7 @@ def test_resolve_scan_limit_applies_default_cap(capsys):
     captured = capsys.readouterr()
 
     assert limit == main.DEFAULT_FULL_SCAN_MAX_MESSAGES
-    assert "默认仅处理前" in captured.out
+    assert "only the first" in captured.out
 
 
 def test_resolve_scan_limit_respects_explicit_full_scan():

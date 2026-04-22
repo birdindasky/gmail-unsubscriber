@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-分类模块 - 判断邮件是否应该退订
-采用「白名单优先 + 多条件叠加 + 可选 AI 二次确认」策略。
+Classification module - decides whether an email should be unsubscribed.
+Uses a "whitelist first + stacked signals + optional AI double-check" strategy.
 
-判断逻辑（按优先级）：
-1. 白名单命中 → 绝对不退订
-2. 含敏感关键词 → 绝对不退订
-3. 关键词条件 2+ → 标记退订
-4. 关键词条件恰好 1 → 交给 Claude AI 判断（可关闭）
-5. 默认 → 不退订
+Decision flow, in priority order:
+1. Whitelist hit -> never unsubscribe
+2. Sensitive keyword hit -> never unsubscribe
+3. 2+ keyword conditions -> mark for unsubscribe
+4. Exactly 1 keyword condition -> let AI decide (optional)
+5. Default -> do not unsubscribe
 """
 
 import logging
@@ -31,11 +31,11 @@ CANCELLATION_CONTEXT_KEYWORDS = [
 
 
 # ────────────────────────────────────────────────────────────────
-#  白名单检查
+#  Whitelist check
 # ────────────────────────────────────────────────────────────────
 
 def is_whitelisted(sender: str) -> bool:
-    """检查发件人是否在白名单中（内置 + 用户自定义）。"""
+    """Check whether the sender is whitelisted (built-in + user-defined)."""
     if not sender:
         return False
 
@@ -55,11 +55,11 @@ def is_whitelisted(sender: str) -> bool:
 
 
 # ────────────────────────────────────────────────────────────────
-#  敏感内容检查
+#  Sensitive content check
 # ────────────────────────────────────────────────────────────────
 
 def is_sensitive(email_data: dict) -> bool:
-    """检查邮件是否包含敏感关键词。含敏感词则绝对不退订。"""
+    """Check whether the email contains sensitive keywords. If so, never unsubscribe."""
     check_text = " ".join([
         email_data.get("subject", ""),
         email_data.get("snippet", ""),
@@ -68,13 +68,13 @@ def is_sensitive(email_data: dict) -> bool:
 
     for keyword in config.SENSITIVE_KEYWORDS:
         if keyword.lower() in check_text:
-            logger.debug(f"检测到敏感关键词：「{keyword}」")
+            logger.debug(f"Detected sensitive keyword: {keyword}")
             return True
     return False
 
 
 def is_post_cancellation_feedback(email_data: dict) -> bool:
-    """识别“取消后反馈调查”类邮件，避免误当作可退订营销邮件。"""
+    """Detect post-cancellation feedback surveys so they are not treated as marketing mail."""
     if email_data.get("list_unsubscribe"):
         return False
 
@@ -90,14 +90,14 @@ def is_post_cancellation_feedback(email_data: dict) -> bool:
 
 
 # ────────────────────────────────────────────────────────────────
-#  广告内容检查
+#  Ad signal check
 # ────────────────────────────────────────────────────────────────
 
 def is_advertisement(email_data: dict) -> tuple[bool, list[str]]:
     """
-    检查邮件是否满足广告特征条件。
-    返回 (是否判定为广告, 命中的条件列表)。
-    需满足 2+ 条件才判定为广告。
+    Check whether the email matches ad signal conditions.
+    Returns (is_ad, matched_conditions).
+    At least 2 conditions must match to classify it as an ad.
     """
     matched_conditions = []
 
@@ -111,15 +111,15 @@ def is_advertisement(email_data: dict) -> tuple[bool, list[str]]:
 
     check_text = f"{subject} {snippet} {body_text}"
 
-    # 条件 1：含广告关键词
+    # Condition 1: contains ad keywords
     matched_ad_kw = [kw for kw in config.AD_KEYWORDS if kw.lower() in check_text]
     if matched_ad_kw:
         matched_conditions.append(
-            f"含广告关键词：{', '.join(matched_ad_kw[:3])}"
+            f"Contains ad keywords: {', '.join(matched_ad_kw[:3])}"
             + ("..." if len(matched_ad_kw) > 3 else "")
         )
 
-    # 条件 2：发件人显示名称或域名含可疑关键词（不含 local part，避免误判）
+    # Condition 2: sender display name or domain contains suspicious keywords
     sender_domain = email_data.get("sender_domain", "").lower()
     sender_display = sender.split("<")[0].strip() if "<" in sender else ""
     sender_tokens = _extract_sender_tokens(sender_display, sender_domain)
@@ -128,27 +128,27 @@ def is_advertisement(email_data: dict) -> tuple[bool, list[str]]:
         if kw.lower() in sender_tokens
     ]
     if matched_sender_kw:
-        matched_conditions.append(f"发件人含可疑关键词：{', '.join(matched_sender_kw[:2])}")
+        matched_conditions.append(f"Sender contains suspicious keywords: {', '.join(matched_sender_kw[:2])}")
 
-    # 条件 3：含 List-Unsubscribe 头部
+    # Condition 3: has a List-Unsubscribe header
     if list_unsub:
-        matched_conditions.append("含 List-Unsubscribe 头部")
+        matched_conditions.append("Has List-Unsubscribe header")
 
-    # 条件 4：Gmail 自动归类为促销
+    # Condition 4: Gmail automatically categorized it as promotional
     if "CATEGORY_PROMOTIONS" in labels:
-        matched_conditions.append("Gmail 自动归类为促销邮件")
+        matched_conditions.append("Gmail auto-categorized it as promotional")
 
-    # 条件 5：noreply 地址
+    # Condition 5: noreply address
     local_part = sender_email.split("@")[0] if "@" in sender_email else sender_email
     if re.match(r"^(noreply|no.reply|donotreply|do.not.reply)$", local_part, re.I):
-        matched_conditions.append("发件人为 noreply 地址")
+        matched_conditions.append("Sender is a noreply address")
 
     is_ad = len(matched_conditions) >= 2
     return is_ad, matched_conditions
 
 
 def _extract_sender_tokens(sender_display: str, sender_domain: str) -> set[str]:
-    """将发件人名称和域名切成词元，避免 brand 名称里的子串误判。"""
+    """Tokenize sender name and domain to avoid false matches on brand substrings."""
     raw = f"{sender_display} {sender_domain}".lower()
     parts = re.findall(r"[\w\u4e00-\u9fff]+", raw)
     expanded = set(parts)
@@ -158,7 +158,7 @@ def _extract_sender_tokens(sender_display: str, sender_domain: str) -> set[str]:
 
 
 # ────────────────────────────────────────────────────────────────
-#  最终决策
+#  Final decision
 # ────────────────────────────────────────────────────────────────
 
 _ai_cache: dict[str, tuple[bool, str]] = {}
@@ -166,36 +166,36 @@ _ai_cache: dict[str, tuple[bool, str]] = {}
 
 def should_unsubscribe(email_data: dict, use_ai: bool = True) -> tuple[bool, str]:
     """
-    综合所有规则，给出是否应该退订的最终判断。
+    Apply all rules and return the final unsubscribe decision.
 
     Args:
-        email_data: 邮件详情字典
-        use_ai:     是否允许调用 Claude AI（False 时跳过 AI 判断）
+        email_data: Email details dictionary
+        use_ai: Whether AI is allowed as a secondary check
 
     Returns:
-        tuple[bool, str]: (是否建议退订, 判断理由)
+        tuple[bool, str]: (should_unsubscribe, reason)
     """
     sender_email = email_data.get("sender_email", "")
 
-    # 第一道防线：白名单
+    # First line of defense: whitelist
     if is_whitelisted(sender_email):
-        return False, f"发件人域名在白名单中（{email_data.get('sender_domain', '')}）"
+        return False, f"Sender domain is whitelisted ({email_data.get('sender_domain', '')})"
 
-    # 第二道防线：敏感内容
+    # Second line of defense: sensitive content
     if is_sensitive(email_data):
-        return False, "邮件含敏感关键词（验证码/订单/账单等），已跳过"
+        return False, "Email contains sensitive keywords (verification code/order/bill/etc.); skipped"
 
-    # 第三道防线：取消后反馈调查，不属于邮件列表退订目标
+    # Third line of defense: post-cancellation feedback surveys
     if is_post_cancellation_feedback(email_data):
-        return False, "邮件属于取消后的反馈调查，不是可执行退订的订阅邮件"
+        return False, "Email is a post-cancellation feedback survey, not an actionable subscription email"
 
-    # 广告特征判断
+    # Ad signal evaluation
     is_ad, conditions = is_advertisement(email_data)
 
     if is_ad:
-        return True, "命中广告特征：" + "；".join(conditions)
+        return True, "Matched ad signals: " + "; ".join(conditions)
 
-    # 恰好命中 1 个条件 → 交给 AI 判断（同一发件人只调一次）
+    # Exactly 1 matched condition -> let AI decide, once per sender
     if len(conditions) == 1 and use_ai:
         if sender_email in _ai_cache:
             ai_result, ai_reason = _ai_cache[sender_email]
@@ -207,33 +207,33 @@ def should_unsubscribe(email_data: dict, use_ai: bool = True) -> tuple[bool, str
             )
             _ai_cache[sender_email] = (ai_result, ai_reason)
         if ai_result:
-            return True, f"AI 判定为广告：{ai_reason}（辅助条件：{conditions[0]}）"
+            return True, f"AI classified as ad: {ai_reason} (supporting signal: {conditions[0]})"
 
-    return False, "未达到广告判定标准，跳过"
+    return False, "Did not meet the ad threshold; skipped"
 
 
 # ────────────────────────────────────────────────────────────────
-#  批量分类
+#  Batch classification
 # ────────────────────────────────────────────────────────────────
 
 def classify_emails(emails: list[dict], use_ai: bool = True) -> dict:
     """
-    对邮件列表进行批量分类，按发件人归组。
+    Classify a list of emails and group them by sender.
 
     Args:
-        emails:  邮件详情列表
-        use_ai:  是否允许 AI 辅助判断
+        emails: List of email detail dictionaries
+        use_ai: Whether AI-assisted decisions are allowed
 
     Returns:
         dict: {"to_unsubscribe": [...], "skipped": int}
     """
     sender_groups: dict[str, dict] = {}
     total = len(emails)
-    print(f"\n🔍 正在分类 {total} 封邮件...")
+    print(f"\n🔍 Classifying {total} emails...")
 
     for idx, em in enumerate(emails, 1):
         if idx % 50 == 0 or idx == total:
-            print(f"   分类进度：{idx}/{total} 封...")
+            print(f"   Classification progress: {idx}/{total} emails...")
         sender_email = em.get("sender_email", "unknown")
         decision, reason = should_unsubscribe(em, use_ai=use_ai)
 
@@ -280,19 +280,19 @@ def classify_emails(emails: list[dict], use_ai: bool = True) -> dict:
 
 
 # ────────────────────────────────────────────────────────────────
-#  按类别归组
+#  Group by category
 # ────────────────────────────────────────────────────────────────
 
 def categorize_groups(groups: list[dict], use_ai: bool = True) -> dict[str, list[dict]]:
     """
-    将发件人分组按邮件类别归组。
+    Group sender groups by email category.
 
     Args:
-        groups:  classify_emails() 返回的 to_unsubscribe 列表
-        use_ai:  是否使用 AI 判断未知域名的类别
+        groups: The to_unsubscribe list returned by classify_emails()
+        use_ai: Whether AI is allowed to classify unknown domains
 
     Returns:
-        dict: {类别名: [发件人分组列表]}，只包含非空类别
+        dict: {category_name: [sender_group_list]}, excluding empty categories
     """
     categorized: dict[str, list[dict]] = {}
     total = len(groups)
@@ -314,14 +314,14 @@ def categorize_groups(groups: list[dict], use_ai: bool = True) -> dict[str, list
                 category = domain_cat_cache[domain]
             else:
                 ai_count += 1
-                print(f"   🤖 AI 分类中 ({ai_count})：{domain}...")
+                print(f"   🤖 AI categorizing ({ai_count}): {domain}...")
                 sender = group.get("sender", "")
                 subject = group["sample_subjects"][0] if group.get("sample_subjects") else ""
                 category = ai_classifier.categorize_with_ai(sender, subject)
                 domain_cat_cache[domain] = category
 
         if not category:
-            category = "其他"
+            category = "Other"
 
         if category not in categorized:
             categorized[category] = []

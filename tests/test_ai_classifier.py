@@ -61,7 +61,7 @@ def test_ai_disabled_returns_false():
         )
 
     assert is_ad is False
-    assert "关闭" in reason
+    assert "disabled" in reason
 
 
 def test_missing_api_key_returns_false():
@@ -78,7 +78,7 @@ def test_missing_api_key_returns_false():
         )
 
     assert is_ad is False
-    assert "未配置" in reason or "跳过" in reason
+    assert "No AI provider" in reason
 
 
 def test_api_error_returns_false():
@@ -95,7 +95,7 @@ def test_api_error_returns_false():
         is_ad, reason = ai_classifier.classify_with_ai("x@y.com", "test", "test")
 
     assert is_ad is False
-    assert "失败" in reason
+    assert "failed" in reason
 
 
 
@@ -146,18 +146,18 @@ def test_categorize_with_ai_returns_category():
     """categorize_with_ai 应返回有效类别名。"""
     import ai_classifier
     with patch("ai_classifier.user_config") as mock_uc, \
-         patch("ai_classifier._call_anthropic", return_value=json.dumps({"category": "电商购物"})), \
+         patch("ai_classifier._call_anthropic", return_value=json.dumps({"category": "E-commerce"})), \
          patch("ai_classifier.config") as mock_config:
         mock_config.USE_AI_CLASSIFIER = True
         mock_config.AI_MAX_TOKENS = 1024
-        mock_config.CATEGORY_NAMES = ["电商购物", "社交媒体", "其他"]
+        mock_config.CATEGORY_NAMES = ["E-commerce", "Social", "Other"]
         mock_uc.get_active_provider.return_value = {
             "id": "minimax", "api_key": "sk-cp-test", "model": "MiniMax-M2", "base_url": None,
         }
 
         category = ai_classifier.categorize_with_ai("淘宝", "限时折扣")
 
-    assert category == "电商购物"
+    assert category == "E-commerce"
 
 
 def test_categorize_with_ai_invalid_returns_other():
@@ -168,14 +168,14 @@ def test_categorize_with_ai_invalid_returns_other():
          patch("ai_classifier.config") as mock_config:
         mock_config.USE_AI_CLASSIFIER = True
         mock_config.AI_MAX_TOKENS = 1024
-        mock_config.CATEGORY_NAMES = ["电商购物", "社交媒体", "其他"]
+        mock_config.CATEGORY_NAMES = ["E-commerce", "Social", "Other"]
         mock_uc.get_active_provider.return_value = {
             "id": "minimax", "api_key": "sk-cp-test", "model": "MiniMax-M2", "base_url": None,
         }
 
         category = ai_classifier.categorize_with_ai("unknown@xyz.com", "Hello")
 
-    assert category == "其他"
+    assert category == "Other"
 
 
 def test_categorize_with_ai_error_returns_other():
@@ -186,14 +186,14 @@ def test_categorize_with_ai_error_returns_other():
          patch("ai_classifier.config") as mock_config:
         mock_config.USE_AI_CLASSIFIER = True
         mock_config.AI_MAX_TOKENS = 1024
-        mock_config.CATEGORY_NAMES = ["电商购物", "其他"]
+        mock_config.CATEGORY_NAMES = ["E-commerce", "Other"]
         mock_uc.get_active_provider.return_value = {
             "id": "minimax", "api_key": "sk-cp-test", "model": "MiniMax-M2", "base_url": None,
         }
 
         category = ai_classifier.categorize_with_ai("x@y.com", "test")
 
-    assert category == "其他"
+    assert category == "Other"
 
 
 def test_call_ai_routes_openai_protocol():
@@ -239,7 +239,7 @@ def test_no_provider_skips_ai():
         mock_uc.get_active_provider.return_value = None
         is_ad, reason = ai_classifier.classify_with_ai("s", "subj", "snip")
     assert is_ad is False
-    assert "未配置" in reason or "跳过" in reason
+    assert "No AI provider" in reason
 
 
 def test_test_connection_success():
@@ -249,7 +249,7 @@ def test_test_connection_success():
             "deepseek", "sk-abc", "deepseek-chat", None
         )
     assert ok is True
-    assert "成功" in msg
+    assert "successful" in msg
 
 
 def test_test_connection_auth_fail():
@@ -270,7 +270,7 @@ def test_test_connection_unknown_provider():
     import ai_classifier
     ok, msg = ai_classifier.test_connection("not-a-provider", "x", "x", None)
     assert ok is False
-    assert "未知" in msg
+    assert "Unknown" in msg
 
 
 def test_mask_secrets_hides_api_key():

@@ -1,6 +1,6 @@
-"""用户配置持久化（AI 提供商选择 + API Key）。
+"""User config persistence (AI provider selection + API key).
 
-存储在项目根目录 user_config.json（已在 .gitignore 中排除）。
+Stored in user_config.json at the project root, which is already gitignored.
 """
 import json
 import os
@@ -67,7 +67,7 @@ def set_active_provider(provider_id: str, api_key: str, model: str,
 
 
 def migrate_from_env() -> bool:
-    """首次启动时从环境变量迁移 AI 配置。已有配置则不迁移。返回是否迁移。"""
+    """Migrate AI config from environment variables on first launch. Returns whether migration happened."""
     if os.path.exists(CONFIG_FILE):
         return False
 

@@ -33,17 +33,17 @@ def test_parse_selection_zero_returns_empty():
 
 def test_format_category_summary():
     categorized = {
-        "电商购物": [
+        "E-commerce": [
             {"sender_email": "a@taobao.com", "count": 10},
             {"sender_email": "b@jd.com", "count": 5},
         ],
-        "新闻资讯": [
+        "Newsletter": [
             {"sender_email": "c@36kr.com", "count": 3},
         ],
     }
     lines = format_category_summary(categorized)
     assert len(lines) == 2
-    assert "电商购物" in lines[0]
-    assert "2 个发件人" in lines[0]
-    assert "15 封" in lines[0]
-    assert "新闻资讯" in lines[1]
+    assert "E-commerce" in lines[0]
+    assert "2 senders" in lines[0]
+    assert "15 emails" in lines[0]
+    assert "Newsletter" in lines[1]
