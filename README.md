@@ -1,8 +1,44 @@
-# Gmail Unsubscriber
+<div align="center">
+
+<img src="assets/banner.svg" alt="Gmail Unsubscriber — Bulk-unsubscribe from Gmail promotions, safely skip your bank, doctor, and boss" width="100%" />
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python: 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![AI Providers: 9](https://img.shields.io/badge/AI%20providers-9-orange)](#-ai-support)
+[![Status: stable](https://img.shields.io/badge/status-stable-green)](#)
 
 **English** | [中文](./README_zh.md)
 
-Automatically identify and unsubscribe from promotional emails in Gmail, while safely skipping important senders (banks, government, medical, work, etc.).
+</div>
+
+> Your inbox has 300 unread promotional emails. You've tried unsubscribing one by one — and given up. This tool finishes the job in minutes, while keeping your bank, doctor, and boss safe.
+
+## ✨ How it feels
+
+```
+┌─ Terminal ────────────────────────────────────────────────────────┐
+│                                                                   │
+│  $ python3 main.py scan --days 30                                 │
+│                                                                   │
+│  Scanning last 30 days of mail...                                 │
+│  ✓ 247 emails scanned                                             │
+│  ✓ 38 marked as promotional                                       │
+│  ✓ 12 protected (bank · doctor · employer · government)           │
+│                                                                   │
+│  $ python3 main.py unsubscribe --confirm                          │
+│                                                                   │
+│  [Newsletter A] Unsubscribe?  (y/n) y → ✓                         │
+│  [Marketing B]  Unsubscribe?  (y/n) y → ✓                         │
+│  [Promo C]      Unsubscribe?  (y/n) n → kept                      │
+│   ⋯ 35 more ⋯                                                    │
+│                                                                   │
+│  Done. 36 unsubscribed in 4 minutes.                              │
+│  Bank · doctor · employer — untouched.                            │
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+Two commands. A few minutes. Important senders never touched.
 
 ## 🛡️ Safety Features
 
@@ -13,6 +49,29 @@ Automatically identify and unsubscribe from promotional emails in Gmail, while s
 - **Full-history safety cap**: `--days 0 --all` processes only the first `2000` messages unless you opt in, so you never accidentally scan an entire mailbox
 
 > 💻 **Platforms**: Mac / Linux / Windows / WSL2 — fully cross-platform. See [USAGE_GUIDE.md](./docs/USAGE_GUIDE.md) for platform-specific command differences between native Windows and WSL2.
+
+## 🧭 How the safety logic works
+
+```mermaid
+flowchart TD
+    A([📧 Email]) --> B{Whitelisted?<br/>bank · gov · medical · work}
+    B -->|Match| C([🛡️ Skip — never unsubscribed])
+    B -->|No match| D[AI classifies as promo?]
+    D -->|No| G([Keep in inbox])
+    D -->|Yes| E{Has unsubscribe link?}
+    E -->|No| G
+    E -->|Yes| F{You confirm?}
+    F -->|No| G
+    F -->|Yes| H([✓ Unsubscribed])
+
+    style B fill:#dbeafe,stroke:#1e40af,color:#000
+    style C fill:#dcfce7,stroke:#15803d,color:#000
+    style F fill:#fef3c7,stroke:#b45309,color:#000
+    style H fill:#dcfce7,stroke:#15803d,color:#000
+    style G fill:#f1f5f9,stroke:#475569,color:#000
+```
+
+The whitelist gate runs first. The AI classifier runs second. Your confirmation runs last. Three independent checks before any unsubscribe.
 
 ## 🚀 Four-Step Quick Start
 
@@ -110,3 +169,13 @@ Built-in: **OpenAI, Anthropic Claude, MiniMax, DeepSeek, Moonshot (Kimi), Qwen (
 4. **OAuth-based security**: uses the Gmail API, not IMAP passwords
 5. **Full-mailbox opt-in**: `--days 0 --all` processes only the first `2000` messages unless you explicitly add `--full-scan`
 6. **Local credential hardening**: `token.json`, `credentials.json`, and `gmail-unsubscriber.db` are automatically set to `0o600` (current-user read/write only); API keys in logs are masked; unsubscribe links are restricted to `http(s)` schemes
+
+---
+
+<div align="center">
+
+**Built by [@birdindasky](https://github.com/birdindasky) · MIT licensed**
+
+⭐ Star if this saved you from clicking 300 unsubscribe links.
+
+</div>
