@@ -1,6 +1,44 @@
-# Gmail 智能退订器
+<div align="center">
 
-自动识别并退订 Gmail 中的商业广告邮件，同时安全跳过重要邮件（银行、政府、医疗、工作等）。
+<img src="assets/banner.svg" alt="Gmail Unsubscriber — 批量退订 Gmail 促销邮件,银行/医生/老板自动跳过" width="100%" />
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python: 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![AI Providers: 9](https://img.shields.io/badge/AI%20providers-9-orange)](#-ai-支持)
+[![Status: stable](https://img.shields.io/badge/status-stable-green)](#)
+
+[English](./README.md) | **中文**
+
+</div>
+
+> 你的收件箱有 300 封未读促销邮件。你试过一封封退订——然后放弃了。这个工具几分钟内帮你清完,同时让银行、医生、老板的邮件不被碰一下。
+
+## ✨ 用起来什么感觉
+
+```
+┌─ 终端 ─────────────────────────────────────────────────────────────┐
+│                                                                   │
+│  $ python3 main.py scan --days 30                                 │
+│                                                                   │
+│  扫描最近 30 天邮件...                                              │
+│  ✓ 247 封邮件已扫描                                                 │
+│  ✓ 38 封识别为促销                                                  │
+│  ✓ 12 封受保护(银行 · 医生 · 雇主 · 政府)                          │
+│                                                                   │
+│  $ python3 main.py unsubscribe --confirm                          │
+│                                                                   │
+│  [Newsletter A] 退订?  (y/n) y → ✓                                │
+│  [Marketing B]  退订?  (y/n) y → ✓                                │
+│  [Promo C]      退订?  (y/n) n → 保留                             │
+│   ⋯ 还有 35 封 ⋯                                                  │
+│                                                                   │
+│  完成。4 分钟内退订 36 封。                                         │
+│  银行 · 医生 · 雇主 — 完全没动。                                    │
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+两个命令。几分钟。重要发件人一封都没动。
 
 ## 🛡️ 安全特性
 
@@ -10,7 +48,30 @@
 - **逐个确认**：默认逐个确认每个发件人
 - **全历史保护**：`--days 0 --all` 默认只处理前 `2000` 封，避免误跑整箱
 
-> 💻 **支持平台**：Mac / Linux / Windows / WSL2，全平台通用。Windows 原生和 WSL2 的命令差异详见 [USAGE_GUIDE.md](./docs/USAGE_GUIDE.md#2-首次配置只需做一次)。
+> 💻 **支持平台**：Mac / Linux / Windows / WSL2,全平台通用。Windows 原生和 WSL2 的命令差异详见 [USAGE_GUIDE.md](./docs/USAGE_GUIDE.md#2-首次配置只需做一次)。
+
+## 🧭 安全逻辑怎么走
+
+```mermaid
+flowchart TD
+    A([📧 邮件]) --> B{在白名单?<br/>银行 · 政府 · 医疗 · 工作}
+    B -->|匹配| C([🛡️ 跳过 — 永不退订])
+    B -->|不匹配| D[AI 判断是否促销?]
+    D -->|不是| G([保留在收件箱])
+    D -->|是| E{有退订链接?}
+    E -->|没有| G
+    E -->|有| F{你确认?}
+    F -->|否| G
+    F -->|是| H([✓ 已退订])
+
+    style B fill:#dbeafe,stroke:#1e40af,color:#000
+    style C fill:#dcfce7,stroke:#15803d,color:#000
+    style F fill:#fef3c7,stroke:#b45309,color:#000
+    style H fill:#dcfce7,stroke:#15803d,color:#000
+    style G fill:#f1f5f9,stroke:#475569,color:#000
+```
+
+白名单在最前。AI 在中间。你的确认在最后。三道独立闸,任何一道不通过就不会退订。
 
 ## 🚀 4 步快速启动
 
@@ -108,3 +169,13 @@ python3 main.py unsubscribe --confirm --auto      # 自动退订全部
 4. **OAuth 安全**：使用 Gmail API 而非 IMAP 密码
 5. **全历史全邮箱默认保护**：`--days 0 --all` 默认只处理前 `2000` 封；如需完整扫描，必须显式加 `--full-scan`
 6. **本地凭据文件权限收紧**：`token.json`、`credentials.json`、`gmail-unsubscriber.db` 均自动设置为 `0o600`（仅当前用户可读写），日志里的 API Key 会被遮蔽，退订链接仅接受 `http(s)` 协议
+
+---
+
+<div align="center">
+
+**作者 [@birdindasky](https://github.com/birdindasky) · MIT 协议**
+
+⭐ 如果这工具帮你省下点 300 次"取消订阅"按钮的时间,star 一下吧。
+
+</div>
