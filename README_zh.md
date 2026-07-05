@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/banner.svg" alt="Gmail Unsubscriber — 批量退订 Gmail 促销邮件,银行/医生/老板自动跳过" width="100%" />
+<img src="assets/social-preview.png" alt="Gmail Unsubscriber — 批量退订 Gmail 促销邮件,银行/医生/老板自动跳过" width="100%" />
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python: 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
