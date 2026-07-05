@@ -15,28 +15,7 @@
 
 ## ✨ How it feels
 
-```
-┌─ Terminal ────────────────────────────────────────────────────────┐
-│                                                                   │
-│  $ python3 main.py scan --days 30                                 │
-│                                                                   │
-│  Scanning last 30 days of mail...                                 │
-│  ✓ 247 emails scanned                                             │
-│  ✓ 38 marked as promotional                                       │
-│  ✓ 12 protected (bank · doctor · employer · government)           │
-│                                                                   │
-│  $ python3 main.py unsubscribe --confirm                          │
-│                                                                   │
-│  [Newsletter A] Unsubscribe?  (y/n) y → ✓                         │
-│  [Marketing B]  Unsubscribe?  (y/n) y → ✓                         │
-│  [Promo C]      Unsubscribe?  (y/n) n → kept                      │
-│   ⋯ 35 more ⋯                                                    │
-│                                                                   │
-│  Done. 36 unsubscribed in 4 minutes.                              │
-│  Bank · doctor · employer — untouched.                            │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
-```
+<img src="assets/how-it-feels.png" alt="Two commands: scan, then confirm each unsubscribe — bank, doctor, boss stay untouched" width="100%" />
 
 Two commands. A few minutes. Important senders never touched.
 

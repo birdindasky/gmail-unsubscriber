@@ -15,28 +15,7 @@
 
 ## ✨ 用起来什么感觉
 
-```
-┌─ 终端 ─────────────────────────────────────────────────────────────┐
-│                                                                   │
-│  $ python3 main.py scan --days 30                                 │
-│                                                                   │
-│  扫描最近 30 天邮件...                                              │
-│  ✓ 247 封邮件已扫描                                                 │
-│  ✓ 38 封识别为促销                                                  │
-│  ✓ 12 封受保护(银行 · 医生 · 雇主 · 政府)                          │
-│                                                                   │
-│  $ python3 main.py unsubscribe --confirm                          │
-│                                                                   │
-│  [Newsletter A] 退订?  (y/n) y → ✓                                │
-│  [Marketing B]  退订?  (y/n) y → ✓                                │
-│  [Promo C]      退订?  (y/n) n → 保留                             │
-│   ⋯ 还有 35 封 ⋯                                                  │
-│                                                                   │
-│  完成。4 分钟内退订 36 封。                                         │
-│  银行 · 医生 · 雇主 — 完全没动。                                    │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
-```
+<img src="assets/how-it-feels.png" alt="Two commands: scan, then confirm each unsubscribe — bank, doctor, boss stay untouched" width="100%" />
 
 两个命令。几分钟。重要发件人一封都没动。
 
