@@ -50,3 +50,25 @@ build/
 
 # SQLite 数据库
 gmail-unsubscriber.db
+
+# v2 private account state and isolated development artifacts
+.local/
+.venv-v2/
+.pytest_cache/
+.playwright-mcp/
+
+# P2 private, redacted live-trial evidence
+/work/redesign-v2/p2/
+
+# P3 private, redacted live-trial evidence
+/work/redesign-v2/p3/
+
+# P4 private, redacted live-trial evidence
+/work/redesign-v2/p4/
+
+# P5 private delivery evidence and isolated rebuild
+/work/redesign-v2/p5/
+.venv-v2-p5/
+
+# Local stage plans and acceptance evidence may describe private mailbox activity.
+/work/

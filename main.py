@@ -25,6 +25,12 @@ Examples:
   python main.py logs
 """
 
+# Enter v2 before loading historical credential or network modules.
+if __name__ == "__main__":
+    from app import main as launch_v2
+    launch_v2()
+    raise SystemExit(0)
+
 import argparse
 import logging
 import os
@@ -1027,7 +1033,3 @@ def main() -> None:
         print(f"\n❌ The program hit an unexpected error: {e}")
         print(f"   See the log for details: {LOG_FILE}")
         sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

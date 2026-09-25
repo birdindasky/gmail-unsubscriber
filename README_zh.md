@@ -1,160 +1,59 @@
-<div align="center">
+# 轻邮 · Gmail Unsubscriber v2
 
-<img src="assets/social-preview.png" alt="Gmail Unsubscriber — 批量退订 Gmail 促销邮件,银行/医生/老板自动跳过" width="100%" />
+在本机看清 Gmail 里有哪些订阅，保留重要邮件，审阅后再提交退订请求。
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python: 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![AI Providers: 9](https://img.shields.io/badge/AI%20providers-9-orange)](#-ai-支持)
-[![Status: stable](https://img.shields.io/badge/status-stable-green)](#)
+当前定位为本机受限试用；对方是否接受退订及以后是否停信尚不能保证。结果待确认的请求不要重复提交。
 
-[English](./README.md) | **中文**
+新版提供完整中文界面：订阅清单、搜索筛选、样本详情、批量预览、域名保护、扫描进度与取消、逐项操作记录。不需要付费 AI，也不上传邮件给模型服务。
 
-</div>
+## 先体验
 
-> 你的收件箱有 300 封未读促销邮件。你试过一封封退订——然后放弃了。这个工具几分钟内帮你清完,同时让银行、医生、老板的邮件不被碰一下。
-
-## ✨ 用起来什么感觉
-
-<img src="assets/how-it-feels.png" alt="Two commands: scan, then confirm each unsubscribe — bank, doctor, boss stay untouched" width="100%" />
-
-两个命令。几分钟。重要发件人一封都没动。
-
-## 🛡️ 安全特性
-
-- **白名单优先**：银行、Google、政府、医疗等重要发件人一律跳过
-- **默认 dry-run**：所有操作先预览再执行，不会误退订
-- **不删除邮件**：只退订，不动收件箱
-- **逐个确认**：默认逐个确认每个发件人
-- **全历史保护**：`--days 0 --all` 默认只处理前 `2000` 封，避免误跑整箱
-
-> 💻 **支持平台**：Mac / Linux / Windows / WSL2,全平台通用。Windows 原生和 WSL2 的命令差异详见 [USAGE_GUIDE.md](./docs/USAGE_GUIDE.md#2-首次配置只需做一次)。
-
-## 🧭 安全逻辑怎么走
-
-```mermaid
-flowchart TD
-    A([📧 邮件]) --> B{在白名单?<br/>银行 · 政府 · 医疗 · 工作}
-    B -->|匹配| C([🛡️ 跳过 — 永不退订])
-    B -->|不匹配| D[AI 判断是否促销?]
-    D -->|不是| G([保留在收件箱])
-    D -->|是| E{有退订链接?}
-    E -->|没有| G
-    E -->|有| F{你确认?}
-    F -->|否| G
-    F -->|是| H([✓ 已退订])
-
-    style B fill:#dbeafe,stroke:#1e40af,color:#000
-    style C fill:#dcfce7,stroke:#15803d,color:#000
-    style F fill:#fef3c7,stroke:#b45309,color:#000
-    style H fill:#dcfce7,stroke:#15803d,color:#000
-    style G fill:#f1f5f9,stroke:#475569,color:#000
-```
-
-白名单在最前。AI 在中间。你的确认在最后。三道独立闸,任何一道不通过就不会退订。
-
-## 🚀 4 步快速启动
+macOS 双击 **体验演示.command**，或运行：
 
 ```bash
-# 1. 进入项目目录
-cd /path/to/gmail-unsubscriber
-
-# 2. 创建虚拟环境并安装依赖
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# 3. 获取 Google OAuth 凭证
-# 参考 docs/USAGE_GUIDE.md 完成 Google Cloud Console 配置
-# 将 credentials.json 放入项目根目录
-
-# 4. 首次运行（会弹出浏览器授权）
-python3 main.py
+python3 app.py --demo
 ```
 
-## 🔧 运行环境
+页面会明确显示“演示邮箱”。其中邮件和执行结果是合成数据，不会访问真实 Gmail 或退订网站。命令行演示只需要 Python 3.10+；双击启动器需要先按下文准备项目虚拟环境。
 
-- 推荐 `Python 3.10+`
-- 测试依赖在 `requirements-dev.txt`
-- 如果本机默认 `python3` 里没有 `pytest`，请先激活项目虚拟环境再执行测试
+## 连接自己的 Gmail
+
+在项目虚拟环境中安装真实邮箱适配器：
 
 ```bash
-source venv/bin/activate
-pip install -r requirements-dev.txt
-python -m pytest
+python3 -m venv .venv-v2
+source .venv-v2/bin/activate
+python -m pip install -r requirements-v2.lock
 ```
 
-## 📖 两种使用方式
+准备好 Google 桌面 OAuth 客户端文件 `credentials.json` 后，双击 **启动轻邮.command**，或运行 `python app.py --live`。启动后点击连接才会读取凭据并打开 Google 授权；新版只申请读取邮箱的权限。
 
-### 方式一：交互式菜单（推荐新手）
+## 怎样整理
 
-直接运行，跟着菜单操作：
+1. 扫描最近30天的促销邮件，先用默认100封上限。
+2. 看样本主题与理由，将要保留的域名加入保护。
+3. 选择最多20个订阅，查看可提交、需人工处理和被保护的项目。
+4. 明确确认计划，逐项查看结果。
+
+一键退订会先检查原始邮件的 DKIM 签名；无法验证的项目打开 Gmail 人工处理。普通网页、登录页与邮件发送成功都不会被直接当作完成退订。**“请求已接受”只是站点回执，不保证以后一定不再发信。**
+
+## 数据与运行边界
+
+- 数据只写入本项目 `.local/v2-demo/` 与 `.local/v2-live/`，两种模式分开保存。
+- 新版不自动复用旧 token，不把旧版成功历史直接导入。
+- 不发送 Gmail 邮件、不删除或归档邮件；没有自启动、定时任务或后台安装。
+- 本机网页仅绑定回环地址，在启动终端按 Control+C 即可停止应用。
+- 旧模块保留用于历史对照；`python main.py` 已转到新版入口，旧 `unsubscribe --confirm` 命令不再受支持。
+
+[完整使用说明](docs/V2_USAGE.md) · [新版架构](docs/V2_ARCHITECTURE.md) · [English](README.md)
+
+## 开发验证
 
 ```bash
-python3 main.py
+python -m pip install -r requirements-v2-test.lock
+python -m pytest tests_v2 -q
 ```
 
-菜单会引导你完成扫描、按类别退订、管理白名单等操作。
+离线通过只说明本地行为得到验证，不代表退订方已接受请求或以后不会再来信。本机试用记录和私人邮箱数据不上传到公开仓库；已测试依赖版本见[重建说明](docs/V2_REBUILD.md)。
 
-### 方式二：命令行参数（高级用户）
-
-```bash
-python3 main.py scan                              # 扫描最近 30 天
-python3 main.py scan --days 0                     # 扫全部历史促销邮件
-python3 main.py scan --days 0 --all               # 扫全部历史邮件（默认保护到前 2000 封）
-python3 main.py scan --days 0 --all --max-messages 500  # 全历史先抽样 500 封
-python3 main.py scan --days 0 --all --full-scan   # 明确执行全历史完整扫描
-python3 main.py unsubscribe --dry-run             # 预览退订
-python3 main.py unsubscribe --confirm             # 逐个确认退订
-python3 main.py unsubscribe --confirm --auto      # 自动退订全部
-```
-
-## 📌 推荐用法
-
-- 日常清理：`python3 main.py scan --days 30 --no-ai`
-- 历史促销清理：`python3 main.py scan --days 0 --no-ai`
-- 全邮箱排查先抽样：`python3 main.py scan --days 0 --all --max-messages 500 --no-ai`
-- 只有在您明确要扫完整个邮箱时，再加：`--full-scan`
-
-**时间预期（经验值，具体取决于网络和邮箱规模）：**
-- 扫描 1 万封邮件通常需要十几分钟，退订阶段再加几分钟
-- `--all` 比只扫促销标签明显更慢，建议先 `--max-messages 500` 抽样
-- 实际时间受网络质量、Gmail API 限流、AI 提供商响应速度影响，差异可能在 2~3 倍区间
-
-## 🤖 AI 支持
-
-支持 9 家 AI 提供商（8 家内置 + 1 个自定义兜底），通过菜单交互式配置（无需改环境变量）：
-
-**直接运行 → 菜单 → 5. 设置 → 1. 配置 AI 提供商**，30 秒搞定。
-
-内置支持：**OpenAI、Anthropic Claude、MiniMax、DeepSeek、Moonshot(Kimi)、通义千问、智谱 GLM、Ollama**，以及任何 OpenAI 兼容接口（自定义入口）。
-
-- 配置保存在 `user_config.json`（已加入 `.gitignore`）
-- 同一发件人只调用一次 AI（结果缓存到运行结束），节省费用
-- 首次启动会自动从环境变量迁移老配置，无感升级
-- 未配置 AI 时自动跳过，不影响基本功能
-
-## 📖 文档
-
-- [完整使用手册](./docs/USAGE_GUIDE.md) - 首次配置、所有命令、AI 配置、常见问题（最详细）
-- [命令速查表](./docs/USAGE.md) - 常用命令一页纸速查
-- [架构设计](./docs/ARCHITECTURE.md) - 设计与思路
-- [文件说明](./docs/FILE_OVERVIEW.md) - 代码结构
-
-## ⚠️ 安全提示
-
-1. **默认是预览模式**：`--dry-run` 不会真正退订
-2. **白名单机制**：重要邮件不会被退订
-3. **不删除任何邮件**：退订和删除是独立操作
-4. **OAuth 安全**：使用 Gmail API 而非 IMAP 密码
-5. **全历史全邮箱默认保护**：`--days 0 --all` 默认只处理前 `2000` 封；如需完整扫描，必须显式加 `--full-scan`
-6. **本地凭据文件权限收紧**：`token.json`、`credentials.json`、`gmail-unsubscriber.db` 均自动设置为 `0o600`（仅当前用户可读写），日志里的 API Key 会被遮蔽，退订链接仅接受 `http(s)` 协议
-
----
-
-<div align="center">
-
-**作者 [@birdindasky](https://github.com/birdindasky) · MIT 协议**
-
-⭐ 如果这工具帮你省下点 300 次"取消订阅"按钮的时间,star 一下吧。
-
-</div>
+MIT 许可。原项目作者：[birdindasky](https://github.com/birdindasky)。

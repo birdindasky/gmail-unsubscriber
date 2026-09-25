@@ -1,3 +1,5 @@
+> 此文档保留为 v1 历史资料。新版请阅读 [v2 使用手册](V2_USAGE.md) 与 [v2 架构](V2_ARCHITECTURE.md)。旧 CLI 退订命令不再是受支持入口。
+
 # Gmail Unsubscriber · Quick Reference
 
 For the full manual, see [USAGE_GUIDE.md](USAGE_GUIDE.md).

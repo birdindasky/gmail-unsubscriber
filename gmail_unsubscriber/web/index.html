@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="session-token" content="__SESSION_TOKEN__">
+  <meta name="color-scheme" content="light">
+  <title>轻邮 · 邮件整理工作台</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="主要导航">
+      <a class="brand" href="#subscriptions" aria-label="轻邮首页"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M7 10h18v13H7z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m7 10 9 7 9-7M19 6h7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span><span>轻邮<small>GMAIL UNSUBSCRIBER</small></span></a>
+      <div class="workspace-label">我的工作台</div>
+      <nav class="nav-list">
+        <button class="nav-item active" data-view="subscriptions" aria-current="page"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4.5" width="14" height="11" rx="2"/><path d="m3.5 5.5 6.5 5 6.5-5"/></svg><span>订阅整理</span><span class="nav-count" id="nav-count">—</span></button>
+        <button class="nav-item" data-view="protections"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m10 2.5 6 2.4v4.2c0 4-6 8.4-6 8.4s-6-4.4-6-8.4V4.9z"/><path d="m7 9.5 2 2 4-4"/></svg><span>保护名单</span><span class="nav-dot" aria-hidden="true"></span></button>
+        <button class="nav-item" data-view="activity"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.5 7a7 7 0 1 1-.4 5M3 3v4.5h4.5M10 6v4l3 2"/></svg><span>操作记录</span></button>
+      </nav>
+      <div class="sidebar-note"><span class="mini-symbol" aria-hidden="true">✳</span><p>给收件箱，<br>留一点呼吸的空间。</p><span>从不再需要的订阅开始。</span></div>
+      <div class="sidebar-bottom"><div class="local-status"><span class="status-dot"></span>本机工作台</div><p>整理结果保存在这台电脑</p><button class="text-button" id="reset-demo" hidden>重置演示数据 <span aria-hidden="true">↺</span></button></div>
+    </aside>
+    <div class="main-shell">
+      <header class="topbar"><div class="breadcrumb">工作台 <span>/</span> <span id="breadcrumb-current">订阅整理</span></div><div class="account" id="account-info"><span class="status-dot neutral"></span><span>正在连接本机服务</span></div></header>
+      <main id="main" tabindex="-1">
+        <div id="global-error" class="alert error" role="alert" hidden><span id="global-error-message"></span><button class="text-button" id="retry-state">重新加载</button></div>
+        <div id="demo-banner" class="demo-banner" hidden><span class="demo-label">演示模式</span><span>以下为合成邮件数据，你可以放心体验整理流程。</span><span class="demo-detail">不会访问你的邮箱</span></div>
+        <section class="page-heading"><div><div class="eyebrow" id="page-eyebrow">A LITTLE LESS, A LITTLE LIGHTER</div><h1 id="page-title">让有用的邮件留下。</h1><p id="page-description">看清订阅，选好去留。每一次操作都由你确认。</p></div><button class="button primary" id="open-scan"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M16 8a6 6 0 0 0-10.2-4L3 7m0-4v4h4M4 12a6 6 0 0 0 10.2 4L17 13m0 4v-4h-4"/></svg>扫描邮件</button></section>
+        <div class="scan-progress" id="scan-progress" role="status" hidden><div class="scan-progress-icon"><span class="spinner"></span></div><div><strong id="scan-progress-title">正在扫描邮件</strong><p id="scan-progress-message">整理扫描结果中…</p></div><button class="button small" id="cancel-scan">停止扫描</button></div>
+        <div class="alert subtle" id="partial-banner" hidden>本次扫描已停止，当前展示的是已扫描到的部分结果。</div>
+        <section class="connect-state" id="connect-state" hidden><div class="mail-illustration" aria-hidden="true">↗</div><div><h2>连接邮箱，开始第一次整理</h2><p id="connect-description">由你授权 Gmail 访问后，轻邮才会读取邮件并整理订阅。</p><details class="connection-guide"><summary>首次连接：准备 Google 客户端文件</summary><ol><li>在 Google Cloud 控制台创建项目并启用 Gmail API。</li><li>配置 OAuth 同意屏幕；测试模式下把自己的邮箱加入测试用户。</li><li>创建 OAuth 客户端 ID，应用类型选择“桌面应用”，下载 JSON 文件。</li><li>按下方路径放置文件，或启动时用 --credentials 指定文件，再点击“连接 Gmail”。</li></ol><p>仅申请 Gmail 只读权限；资料保存在本机。退订仍需另行审阅并确认。</p></details><p id="credentials-state"></p><p id="connect-error" role="alert" hidden></p></div><button class="button primary" id="connect-account">连接 Gmail</button></section>
+        <button class="button small" id="reopen-job" hidden>查看任务</button><p id="scan-summary" class="scan-summary" role="status"></p><section id="subscriptions-view" class="view">
+          <div class="stats" aria-label="邮件整理概况">
+            <div class="stat"><div class="stat-label">待审阅订阅<span class="stat-hint accent">从这里开始</span></div><div class="stat-value accent" id="stat-review">—</div><div class="stat-caption">留一点时间，决定去留</div></div>
+            <div class="stat"><div class="stat-label">已整理邮件</div><div class="stat-value" id="stat-messages">—</div><div class="stat-caption"><span id="stat-subscriptions">—</span> 个独立订阅</div></div>
+            <div class="stat"><div class="stat-label">受保护订阅<svg class="tiny-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m10 2.5 6 2.4v4.2c0 4-6 8.4-6 8.4s-6-4.4-6-8.4V4.9z"/><path d="m7 9.5 2 2 4-4"/></svg></div><div class="stat-value teal" id="stat-protected">—</div><div class="stat-caption">重要往来，安心保留</div></div>
+            <div class="stat"><div class="stat-label">退订请求已接受</div><div class="stat-value" id="stat-accepted">—</div><div class="stat-caption">最终生效时间由发件方决定</div></div>
+          </div>
+          <section class="inbox-panel" aria-labelledby="inbox-title">
+            <div class="panel-heading"><div><h2 id="inbox-title">你的订阅 <span id="subscription-count" class="muted-count">0</span></h2><p id="list-description">按订阅归拢，便于逐个判断。</p></div><div class="list-note"><span class="status-dot"></span>保护名单始终优先</div></div>
+            <div class="list-toolbar"><div class="filter-tabs" role="group" aria-label="订阅状态筛选"><button class="filter-tab active" data-filter="all" aria-pressed="true">全部<span id="filter-all-count">0</span></button><button class="filter-tab" data-filter="review" aria-pressed="false">待审阅<span id="filter-review-count">0</span></button><button class="filter-tab" data-filter="protected" aria-pressed="false">受保护</button><button class="filter-tab" data-filter="accepted" aria-pressed="false">已处理</button></div><div class="search-controls"><label class="search-box"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><input id="search" type="search" placeholder="搜索名称、邮箱…" aria-label="搜索订阅"></label><label class="sr-only" for="category-filter">订阅类别</label><select id="category-filter"><option value="all">全部类别</option><option>购物</option><option>资讯</option><option>社交</option><option>工作与服务</option><option>其他</option></select></div></div>
+            <div class="subscription-table"><div class="table-head"><label class="check-label"><input type="checkbox" id="select-all" aria-label="选择当前筛选下的所有订阅"></label><span>订阅来源</span><span class="column-category">类别</span><span class="column-volume">邮件数量</span><span class="column-status">处理建议</span><span class="column-detail"></span></div><div id="subscription-list" class="subscription-list" aria-live="polite"><div class="loading-state"><span class="spinner"></span><span>正在整理工作台…</span></div></div></div>
+            <div class="list-footer"><span id="list-footer-count">正在加载</span><span>点击订阅，查看样本邮件和处理依据 <span aria-hidden="true">↗</span></span></div>
+          </section>
+          <div class="page-footnote"><span aria-hidden="true">ⓘ</span><p>退订仅提交停止后续邮件的请求，不删除现有邮件。需要人工处理的订阅会单独列出。</p></div>
+        </section>
+        <section id="protections-view" class="view" hidden><div class="section-intro"><div class="intro-symbol" aria-hidden="true">✓</div><div><h2>重要的邮件，先保护起来</h2><p>受保护域名及其子域名的订阅不会执行退订。添加后立即生效。</p></div></div><form id="protection-form" class="protection-form"><label for="protection-domain">添加保护域名</label><div><input id="protection-domain" type="text" placeholder="例如 example.com" autocomplete="off" autocapitalize="none" required maxlength="253"><button class="button primary" type="submit">添加保护</button></div><p>填写域名即可，无需 https:// 或邮箱地址。</p></form><div class="protected-list" id="protected-list"></div></section>
+        <section id="activity-view" class="view" hidden><div class="activity-heading"><h2>每一步，都有记录</h2><p>这里记录扫描、保护与退订的处理结果。</p></div><div class="activity-list" id="activity-list"></div></section>
+      </main>
+    </div>
+  </div>
+  <div class="selection-bar" id="selection-bar" hidden><div><span class="selection-number" id="selected-count">已选 0 / 20</span><button class="text-button" id="clear-selection">清空</button></div><span class="selection-explainer">下一步先审阅，不会直接执行</span><button class="button primary" id="preview-selection">审阅退订计划 <span aria-hidden="true">→</span></button></div>
+  <dialog id="detail-dialog" class="drawer" aria-labelledby="detail-title"><div class="dialog-header"><span class="eyebrow">订阅详情</span><button class="icon-button" data-close="detail-dialog" aria-label="关闭订阅详情">×</button></div><div id="detail-body"></div></dialog>
+  <dialog id="review-dialog" class="review-dialog" aria-labelledby="review-title"><div class="dialog-header"><div><div class="eyebrow" id="review-eyebrow">REVIEW BEFORE YOU ACT</div><h2 id="review-title">最后看一眼，再决定。</h2></div><button class="icon-button" id="close-review" data-close="review-dialog" aria-label="关闭退订计划">×</button></div><p class="dialog-description" id="review-description">请检查每个订阅的处理方式。受保护的订阅不会执行退订。</p><div class="review-summary" id="review-summary"></div><div class="review-items" id="review-items"></div><div id="review-error" class="alert error" role="alert" hidden></div><div class="review-footer"><p id="review-footnote">提交后无法撤回已发出的退订请求。</p><button class="button" id="stop-action" hidden>停止未开始项</button><button class="button" id="review-back" data-close="review-dialog">返回调整</button><button class="button primary" id="execute-plan">确认提交请求</button></div></dialog>
+  <dialog id="scan-dialog" class="compact-dialog" aria-labelledby="scan-title"><div class="dialog-header"><div><div class="eyebrow">A FRESH LOOK</div><h2 id="scan-title">这次，整理哪些邮件？</h2></div><button class="icon-button" data-close="scan-dialog" aria-label="关闭扫描设置">×</button></div><p class="dialog-description">扫描用于发现订阅，不会删除邮件或自动退订。</p><form id="scan-form"><label for="scan-days">时间范围</label><select id="scan-days"><option value="7">最近 7 天</option><option value="30" selected>最近 30 天</option><option value="90">最近 90 天</option><option value="365">最近一年</option></select><label for="scan-scope">扫描范围</label><select id="scan-scope"><option value="promotions">促销邮件</option><option value="all">所有邮件</option></select><label for="scan-limit">最多扫描</label><select id="scan-limit"><option value="100" selected>100 封</option><option value="500">500 封</option><option value="1000">1,000 封</option><option value="2000">2,000 封</option></select><div class="scan-notice"><span aria-hidden="true">ⓘ</span><p id="scan-notice-text">可以随时停止扫描，已发现的订阅会保留。</p></div><div id="scan-error" class="alert error" role="alert" hidden></div><button type="submit" class="button primary full-width" id="start-scan">开始扫描 <span aria-hidden="true">→</span></button></form></dialog>
+  <dialog id="manual-dialog" class="compact-dialog" aria-labelledby="manual-title"><div class="dialog-header"><h2 id="manual-title">在 Gmail 中手动处理</h2><button class="icon-button" data-close="manual-dialog" aria-label="关闭人工处理提示">×</button></div><p class="dialog-description">此订阅需要你在原邮件中检查退订方式。轻邮不会自动访问邮件内的链接。</p><div id="manual-content"></div></dialog>
+  <div class="toast-region" id="toast-region" role="status" aria-live="polite"></div>
+</body>
+</html>
